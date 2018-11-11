@@ -8,7 +8,7 @@ The challenge is: how do you update it?
 
 If you change the launch configuration, it does **not** cause new nodes to be rolled in. Even if it did, you would want them to roll in sanely and slowly, one at a time, rather than all at once. Further, you may have app-specific "readiness" requirements, of which AWS simply isn't aware. For example, if you are running Kubernetes workloads on the nodes, you may want to drain the nodes _before_ terminating a node.
 
-[Terraform](https://terraform.io) does a decent job, with a little extra work, making a blue/green deployment: 
+[Terraform](https://terraform.io) does a decent job, with a little extra work, making a blue/green deployment:
 
 1. Create a new auto-scaling group
 2. Make sure all of the nodes in the new ASG are functioning
@@ -36,7 +36,7 @@ The update methodology is simple:
 2. Watch the new node come online.
 3. When new node is ready, select and terminate one old node.
 4. Repeat until the number of nodes with the correct configuration matches the _original_ `desired` setting. At this point, there is likely to be one old node left.
-5. Decrement the `desired` setting. 
+5. Decrement the `desired` setting.
 
 ## App Awareness
 In addition to the above, ASG Roller is able to insert app-specific logic at two distinct points:
@@ -55,7 +55,7 @@ In addition, ASG Roller supports specific logic, such as checking if Kubernetes 
 ### Preparing for Termination
 Prior to terminating the old node, ASG Roller can execute commands to prepare the node for termination. AWS ASG does nothing other than shutting the node down. While well-built apps should be able to handle termination of a node without disruption, in real-world scenarios we often prefer a clean shutdown.
 
-We can execute such a clean shutdown via pluggable commands.
+We can execute such a clean shutdown via supported commands.
 
 As of this writing, the only supported method is Kubernetes draining, but others are in the works, and we are happy to accept pull requests for more.
 
@@ -202,5 +202,6 @@ Several key areas of potential modification:
 ## Configuration
 ASG Roller takes its configuration via environment variables. All environment variables that affect ASG Roller begin with `ROLLER_`.
 
-* `ROLLER_KUBE`: If set to `true`, will check if a new node is ready via-a-vis Kubernetes before declaring it "ready", and will drain an old node before eliminating it. Defaults to `true` when running in Kubernetes as a pod, `false` otherwise.
-
+* `ROLLER_ASG`: comma-separated list of auto-scaling groups that should be managed.
+* `ROLLER_KUBERNETES`: If set to `true`, will check if a new node is ready via-a-vis Kubernetes before declaring it "ready", and will drain an old node before eliminating it. Defaults to `true` when running in Kubernetes as a pod, `false` otherwise.
+* `KUBECONFIG`: Path to kubernetes config file for authenticating to the kubernetes cluster. Required only if `ROLLER_KUBERNETES` is `true` and we are not operating in a kubernetes cluster.
