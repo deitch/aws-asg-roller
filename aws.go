@@ -7,10 +7,12 @@ import (
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/autoscaling"
+	"github.com/aws/aws-sdk-go/service/autoscaling/autoscalingiface"
 	"github.com/aws/aws-sdk-go/service/ec2"
+	"github.com/aws/aws-sdk-go/service/ec2/ec2iface"
 )
 
-func setAsgDesired(svc *autoscaling.AutoScaling, asg *autoscaling.Group, count int64) {
+func setAsgDesired(svc autoscalingiface.AutoScalingAPI, asg *autoscaling.Group, count int64) error {
 	// increase the desired capacity by 1
 	desiredInput := &autoscaling.SetDesiredCapacityInput{
 		AutoScalingGroupName: asg.AutoScalingGroupName,
@@ -23,22 +25,20 @@ func setAsgDesired(svc *autoscaling.AutoScaling, asg *autoscaling.Group, count i
 		if aerr, ok := err.(awserr.Error); ok {
 			switch aerr.Code() {
 			case autoscaling.ErrCodeScalingActivityInProgressFault:
-				fmt.Println(autoscaling.ErrCodeScalingActivityInProgressFault, aerr.Error())
+				return fmt.Errorf("%s %v", autoscaling.ErrCodeScalingActivityInProgressFault, aerr.Error())
 			case autoscaling.ErrCodeResourceContentionFault:
-				fmt.Println(autoscaling.ErrCodeResourceContentionFault, aerr.Error())
+				return fmt.Errorf("%s %v", autoscaling.ErrCodeResourceContentionFault, aerr.Error())
 			default:
-				fmt.Println(aerr.Error())
+				return fmt.Errorf("Unexpected and unknown AWS error: %v", aerr.Error())
 			}
 		} else {
-			// Print the error, cast err to awserr.Error to get the Code and
-			// Message from an error.
-			fmt.Println(err.Error())
+			return fmt.Errorf("Unexpected and unknown non-AWS error: %v", err.Error())
 		}
-		return
 	}
+	return nil
 }
 
-func awsGetHostname(svc *ec2.EC2, id string) (string, error) {
+func awsGetHostname(svc ec2iface.EC2API, id string) (string, error) {
 	hostnames, err := awsGetHostnames(svc, []string{id})
 	if err != nil {
 		return "", err
@@ -48,7 +48,7 @@ func awsGetHostname(svc *ec2.EC2, id string) (string, error) {
 	}
 	return hostnames[0], nil
 }
-func awsGetHostnames(svc *ec2.EC2, ids []string) ([]string, error) {
+func awsGetHostnames(svc ec2iface.EC2API, ids []string) ([]string, error) {
 	ec2input := &ec2.DescribeInstancesInput{
 		InstanceIds: aws.StringSlice(ids),
 	}
@@ -68,7 +68,7 @@ func awsGetHostnames(svc *ec2.EC2, ids []string) ([]string, error) {
 	return hostnames, nil
 }
 
-func awsDescribeGroups(svc *autoscaling.AutoScaling, names []string) ([]*autoscaling.Group, error) {
+func awsDescribeGroups(svc autoscalingiface.AutoScalingAPI, names []string) ([]*autoscaling.Group, error) {
 	input := &autoscaling.DescribeAutoScalingGroupsInput{
 		AutoScalingGroupNames: aws.StringSlice(names),
 	}
@@ -92,7 +92,7 @@ func awsDescribeGroups(svc *autoscaling.AutoScaling, names []string) ([]*autosca
 	return result.AutoScalingGroups, nil
 }
 
-func awsTerminateNode(svc *autoscaling.AutoScaling, id string) error {
+func awsTerminateNode(svc autoscalingiface.AutoScalingAPI, id string) error {
 	input := &autoscaling.TerminateInstanceInAutoScalingGroupInput{
 		InstanceId:                     aws.String(id),
 		ShouldDecrementDesiredCapacity: aws.Bool(false),
@@ -118,7 +118,7 @@ func awsTerminateNode(svc *autoscaling.AutoScaling, id string) error {
 	return nil
 }
 
-func awsGetServices() (*ec2.EC2, *autoscaling.AutoScaling, error) {
+func awsGetServices() (ec2iface.EC2API, autoscalingiface.AutoScalingAPI, error) {
 	sess, err := session.NewSession()
 	if err != nil {
 		return nil, nil, err

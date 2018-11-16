@@ -2,7 +2,7 @@
 
 
 [[projects]]
-  digest = "1:5f4ba1556cb74b5b3ea6365e3e9da9cbc08d81c2072e63f477d8ba76aed7dc4e"
+  digest = "1:a08c48d991e773fdd395d698fd9fe7c0aaa95e59ff9a1703a2944503f0a3d0bf"
   name = "github.com/aws/aws-sdk-go"
   packages = [
     "aws",
@@ -34,7 +34,9 @@
     "private/protocol/rest",
     "private/protocol/xml/xmlutil",
     "service/autoscaling",
+    "service/autoscaling/autoscalingiface",
     "service/ec2",
+    "service/ec2/ec2iface",
     "service/sts",
   ]
   pruneopts = "UT"
@@ -452,8 +454,12 @@
     "github.com/aws/aws-sdk-go/aws/awserr",
     "github.com/aws/aws-sdk-go/aws/session",
     "github.com/aws/aws-sdk-go/service/autoscaling",
+    "github.com/aws/aws-sdk-go/service/autoscaling/autoscalingiface",
     "github.com/aws/aws-sdk-go/service/ec2",
+    "github.com/aws/aws-sdk-go/service/ec2/ec2iface",
     "github.com/openshift/kubernetes-drain",
+    "k8s.io/api/core/v1",
+    "k8s.io/apimachinery/pkg/apis/meta/v1",
     "k8s.io/client-go/kubernetes",
     "k8s.io/client-go/rest",
     "k8s.io/client-go/tools/clientcmd",
