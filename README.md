@@ -2,6 +2,8 @@
 
 Rolling updates for AWS AutoScaling Groups!
 
+[https://github.com/deitch/aws-asg-roller](https://github.com/deitch/aws-asg-roller)
+
 AWS AutoScaling Groups (ASG) are wonderful. They let you declare a config, a minimum and maximum number of ec2 nodes, a desired number, and it keeps that number going for you. It even lets you set it up to scale up or down automatically based on cloudwatch events, effectively adjusting the desired number of nodes in the ASG, in response to load.
 
 The challenge is: how do you update it?
