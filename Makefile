@@ -69,6 +69,9 @@ all: push
 tag:
 	@echo $(TAG)
 
+gitstat:
+	@git status
+
 vendor: dep
 	$(BUILD_CMD) dep ensure
 
@@ -94,7 +97,7 @@ image: $(BINARY)
 push: image
 	docker push $(IMGTAG)
 
-ci: tag build fmt-check lint test vet image
+ci: gitstat tag build fmt-check lint test vet image
 
 fmt-check:
 	if [ -n "$(shell $(BUILD_CMD) gofmt -l ${GO_FILES})" ]; then \
