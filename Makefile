@@ -4,8 +4,8 @@ IMAGE ?= deitch/aws-asg-roller
 HASH ?= $(shell git show --format=%T -s)
 
 # check if we should append a dirty tag
-DIRTY ?= $(shell git diff-index --quiet HEAD -- ; echo $$?)
-ifneq ($(DIRTY),0)
+DIRTY ?= $(shell git status --short)
+ifneq ($(DIRTY),)
 TAG = $(HASH)-dirty
 else
 TAG = $(HASH)
