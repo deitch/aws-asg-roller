@@ -15,7 +15,8 @@ import (
 )
 
 type kubernetesReadiness struct {
-	clientset *kubernetes.Clientset
+	clientset        *kubernetes.Clientset
+	ignoreDaemonSets bool
 }
 
 func (k *kubernetesReadiness) getUnreadyCount(hostnames []string, ids []string) (int, error) {
@@ -67,7 +68,7 @@ func (k *kubernetesReadiness) prepareTermination(hostnames []string, ids []strin
 		}
 		// set options and drain nodes
 		err = drain.Drain(k.clientset, []*corev1.Node{node}, &drain.DrainOptions{
-			IgnoreDaemonsets:   true,
+			IgnoreDaemonsets:   k.ignoreDaemonSets,
 			GracePeriodSeconds: -1,
 			Force:              true,
 		})
@@ -127,7 +128,7 @@ func homeDir() string {
 	return os.Getenv("USERPROFILE") // windows
 }
 
-func kubeGetReadinessHandler() (readiness, error) {
+func kubeGetReadinessHandler(ignoreDaemonSets bool) (readiness, error) {
 	clientset, err := kubeGetClientset()
 	if err != nil {
 		log.Fatalf("Error getting kubernetes connection: %v", err)
@@ -135,5 +136,5 @@ func kubeGetReadinessHandler() (readiness, error) {
 	if clientset == nil {
 		return nil, nil
 	}
-	return &kubernetesReadiness{clientset: clientset}, nil
+	return &kubernetesReadiness{clientset: clientset, ignoreDaemonSets: ignoreDaemonSets}, nil
 }

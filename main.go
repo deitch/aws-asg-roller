@@ -17,8 +17,10 @@ func main() {
 		log.Fatal("Must supply at least one ASG in ROLLER_ASG environment variable")
 	}
 
+	// get config env
+	ignoreDaemonSets := os.Getenv("ROLLER_IGNORE_DAEMONSETS") != "false"
 	// get a kube connection
-	readinessHandler, err := kubeGetReadinessHandler()
+	readinessHandler, err := kubeGetReadinessHandler(ignoreDaemonSets)
 	if err != nil {
 		log.Fatalf("Error getting kubernetes readiness handler when required: %v", err)
 	}
