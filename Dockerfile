@@ -1,11 +1,17 @@
-FROM alpine:3.6 as certs
+FROM golang:1.12 as builder
 
-RUN apk add -U --no-cache ca-certificates
+# install git
+RUN apt-get update && apt-get install -y git curl ca-certificates
+RUN curl https://raw.githubusercontent.com/golang/dep/master/install.sh | sh
 
+WORKDIR /go/src/github.com/deitch/aws-asg-roller
+COPY ./ ./
+
+RUN dep ensure
+RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o aws-asg-roller .
 
 FROM scratch
 
-COPY --from=certs /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
-COPY bin/aws-asg-roller-linux-amd64 /aws-asg-roller
-
+COPY --from=builder /go/src/github.com/deitch/aws-asg-roller/aws-asg-roller /aws-asg-roller
+COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
 CMD ["/aws-asg-roller"]
