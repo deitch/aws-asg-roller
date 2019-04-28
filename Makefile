@@ -41,12 +41,12 @@ PACKAGE_NAME ?= github.com/$(IMAGE)
 IMGTAG = $(IMAGE):$(TAG)
 BINDIR ?= bin
 BINARY ?= $(BINDIR)/aws-asg-roller-$(OS)-$(ARCH)
-BUILD_CMD ?= GOOS=$(OS) GOARCH=$(ARCH)
+BUILD_CMD ?= GOOS=$(OS) GOARCH=$(ARCH) GO111MODULE=on
 
 ifdef DOCKERBUILD
 BUILDER ?= golang:1.11.2-alpine3.8
 BUILD_CMD = docker run --rm \
-    -e GOOS=$(OS) -e GOARCH=$(ARCH) \
+    -e GOOS=$(OS) -e GOARCH=$(ARCH) -e GO111MODULE=on \
 		-e GOCACHE=/gocache \
 		-v $(CURDIR)/.gocache:/gocache \
 		-v $(CURDIR):/go/src/$(PACKAGE_NAME) \
@@ -62,7 +62,7 @@ ifndef PKG_LIST
 endif
 
 .PHONY: all tag build image push test-start test-run test-run-interactive test-stop test build-test vendor
-.PHONY: lint vet golint fmt-check dep ci cd
+.PHONY: lint vet golint fmt-check ci cd
 
 all: push
 
@@ -71,17 +71,6 @@ tag:
 
 gitstat:
 	@git status
-
-vendor: dep
-	$(BUILD_CMD) dep ensure
-
-## ensure we have dep installed
-dep:
-ifeq (, $(shell which dep))
-	mkdir -p $$GOPATH/bin
-	curl https://raw.githubusercontent.com/golang/dep/master/install.sh | sh
-endif
-
 
 build: vendor $(BINARY)
 
