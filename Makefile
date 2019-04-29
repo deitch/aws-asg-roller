@@ -44,7 +44,7 @@ BINARY ?= $(BINDIR)/aws-asg-roller-$(OS)-$(ARCH)
 BUILD_CMD ?= GOOS=$(OS) GOARCH=$(ARCH) GO111MODULE=on
 
 ifdef DOCKERBUILD
-BUILDER ?= golang:1.11.2-alpine3.8
+BUILDER ?= golang:1.12.4-alpine3.9
 BUILD_CMD = docker run --rm \
     -e GOOS=$(OS) -e GOARCH=$(ARCH) -e GO111MODULE=on \
 		-e GOCACHE=/gocache \
@@ -71,6 +71,9 @@ tag:
 
 gitstat:
 	@git status
+
+vendor:
+	$(BUILD_CMD) go mod download
 
 build: vendor $(BINARY)
 
