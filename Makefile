@@ -41,12 +41,12 @@ PACKAGE_NAME ?= github.com/$(IMAGE)
 IMGTAG = $(IMAGE):$(TAG)
 BINDIR ?= bin
 BINARY ?= $(BINDIR)/aws-asg-roller-$(OS)-$(ARCH)
-BUILD_CMD ?= GOOS=$(OS) GOARCH=$(ARCH) GO111MODULE=on
+BUILD_CMD ?= GOOS=$(OS) GOARCH=$(ARCH) GO111MODULE=on CGO_ENABLED=0
 
 ifdef DOCKERBUILD
 BUILDER ?= golang:1.12.4-alpine3.9
 BUILD_CMD = docker run --rm \
-    -e GOOS=$(OS) -e GOARCH=$(ARCH) -e GO111MODULE=on \
+    -e GOOS=$(OS) -e GOARCH=$(ARCH) -e GO111MODULE=on -e CGO_ENABLED=0 \
 		-e GOCACHE=/gocache \
 		-v $(CURDIR)/.gocache:/gocache \
 		-v $(CURDIR):/go/src/$(PACKAGE_NAME) \
