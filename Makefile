@@ -25,41 +25,32 @@ ifeq ($(BUILDARCH),x86_64)
 BUILDARCH=amd64
 endif
 
-# unless otherwise set, I am building for my own architecture, i.e. not cross-compiling
+# unless otherwise set, I am building for my own architecture and OS, i.e. not cross-compiling
 ARCH ?= $(BUILDARCH)
+OS ?= $(BUILDOS)
 # canonicalized names for target architecture
 ifeq ($(ARCH),aarch64)
-        override ARCH=arm64
+override ARCH=arm64
 endif
 ifeq ($(ARCH),x86_64)
-    override ARCH=amd64
+override ARCH=amd64
 endif
-# unless otherwise set, I am building for my own OS, i.e. not cross-compiling
-OS ?= $(BUILDOS)
 
 PACKAGE_NAME ?= github.com/$(IMAGE)
 IMGTAG = $(IMAGE):$(TAG)
+BUILDERTAG = $(IMGTAG)-builder
 BINDIR ?= bin
 BINARY ?= $(BINDIR)/aws-asg-roller-$(OS)-$(ARCH)
-BUILD_CMD ?= GOOS=$(OS) GOARCH=$(ARCH) GO111MODULE=on CGO_ENABLED=0
 
-ifdef DOCKERBUILD
-BUILDER ?= golang:1.12.4-alpine3.9
-BUILD_CMD = docker run --rm \
-    -e GOOS=$(OS) -e GOARCH=$(ARCH) -e GO111MODULE=on -e CGO_ENABLED=0 \
-		-e GOCACHE=/gocache \
-		-v $(CURDIR)/.gocache:/gocache \
-		-v $(CURDIR):/go/src/$(PACKAGE_NAME) \
- 		-w /go/src/$(PACKAGE_NAME) \
-		$(BUILDER)
+GOVER ?= 1.12.4-alpine3.9
+
+GO ?= GOOS=$(OS) GOARCH=$(ARCH) GO111MODULE=on CGO_ENABLED=0
+
+ifneq ($(BUILD),local)
+GO = docker run --rm $(BUILDERTAG)
 endif
 
-GO_FILES := $(shell find . -type f -not -path './vendor/*' -name '*.go')
-
-pkgs:
-ifndef PKG_LIST
-	$(eval PKG_LIST := $(shell $(BUILD_CMD) go list ./... | grep -v vendor))
-endif
+GO_FILES := $(shell find . -type f -name '*.go')
 
 .PHONY: all tag build image push test-start test-run test-run-interactive test-stop test build-test vendor
 .PHONY: lint vet golint fmt-check ci cd
@@ -73,7 +64,9 @@ gitstat:
 	@git status
 
 vendor:
-	$(BUILD_CMD) go mod download
+ifeq ($(BUILD),local)
+	$(GO) go mod download
+endif
 
 build: vendor $(BINARY)
 
@@ -81,42 +74,61 @@ $(BINDIR):
 	mkdir -p $(BINDIR)
 
 $(BINARY): $(BINDIR)
-	$(BUILD_CMD) go build -v -i -o $(BINARY)
+ifneq ($(BUILD),local)
+	$(MAKE) image
+	# because there is no way to `docker extract` or `docker cp` from an image
+	CID=$$(docker create $(IMGTAG)) && \
+	docker cp $${CID}:/aws-asg-roller $(BINARY) && \
+	docker rm $${CID}
+else
+	$(GO) go build -v -i -o $(BINARY)
+endif
 
-image: $(BINARY)
-	docker build -t $(IMGTAG) .
+image:
+	docker build -t $(IMGTAG) --build-arg OS=$(OS) --build-arg ARCH=$(ARCH) --build-arg REPO=$(PACKAGE_NAME) --build-arg GOVER=$(GOVER) .
 
 push: image
 	docker push $(IMGTAG)
 
 ci: gitstat tag build fmt-check lint test vet image
 
-fmt-check:
-	if [ -n "$(shell $(BUILD_CMD) gofmt -l ${GO_FILES})" ]; then \
-		$(BUILD_CMD) gofmt -s -e -d ${GO_FILES}; \
+builder:
+ifneq ($(BUILD),local)
+	docker build -t $(BUILDERTAG) --build-arg OS=$(OS) --build-arg ARCH=$(ARCH) --build-arg REPO=$(PACKAGE_NAME) --build-arg GOVER=$(GOVER) --target=golang .
+endif
+
+fmt-check: builder
+	if [ -n "$$($(GO) gofmt -l ${GO_FILES})" ]; then \
+		$(GO) gofmt -s -e -d ${GO_FILES}; \
 		exit 1; \
 	fi
 
 gometalinter:
+ifeq ($(BUILD),local)
 ifeq (, $(shell which gometalinter))
-	go get -u github.com/alecthomas/gometalinter
+	$(GO) go get -u github.com/alecthomas/gometalinter
+endif
 endif
 
 golint:
+ifeq ($(BUILD),local)
 ifeq (, $(shell which golint))
-	go get -u golang.org/x/lint/golint
+	$(GO) go get -u golang.org/x/lint/golint
+endif
 endif
 
-lint: pkgs golint gometalinter
-	$(BUILD_CMD) gometalinter --disable-all --enable=golint  --vendor ./...
+## Lint files
+lint: golint gometalinter builder
+	$(GO) gometalinter --disable-all --enable=golint  --vendor ./...
 
-## Run unittests
-test: pkgs
-	$(BUILD_CMD) go test -short ${PKG_LIST}
+## Run unit tests
+test: builder
+	# must run go test on my local arch and os
+	$(GO) env GOOS= GOARCH= go test -short ./...
 
 ## Vet the files
-vet: pkgs
-	$(BUILD_CMD) go vet ${PKG_LIST}
+vet: builder
+	$(GO) go vet ./...
 
 cd:
 ifndef BRANCH_NAME

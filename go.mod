@@ -4,6 +4,7 @@ go 1.12
 
 require (
 	github.com/aws/aws-sdk-go v1.15.73
+	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/ghodss/yaml v0.0.0-20150909031657-73d445a93680
 	github.com/go-log/log v0.1.0
 	github.com/gogo/protobuf v0.0.0-20170330071051-c0656edd0d9e
@@ -22,6 +23,7 @@ require (
 	github.com/petar/GoLLRB v0.0.0-20130427215148-53be0d36a84c
 	github.com/peterbourgon/diskv v2.0.1+incompatible
 	github.com/spf13/pflag v1.0.3
+	github.com/stretchr/testify v1.3.0 // indirect
 	golang.org/x/crypto v0.0.0-20180808211826-de0752318171
 	golang.org/x/net v0.0.0-20180724234803-3673e40ba225
 	golang.org/x/oauth2 v0.0.0-20170412232759-a6bd8cefa181
@@ -34,4 +36,5 @@ require (
 	k8s.io/api v0.0.0-20181004124137-fd83cbc87e76
 	k8s.io/apimachinery v0.0.0-20180913025736-6dd46049f395
 	k8s.io/client-go v9.0.0+incompatible
+	k8s.io/kube-openapi v0.0.0-20190426233423-c5d3b0f4bee0 // indirect
 )
