@@ -176,7 +176,7 @@ func groupInstances(asg *autoscaling.Group) ([]*autoscaling.Instance, []*autosca
 	targetLc := asg.LaunchConfigurationName
 	// go through each instance and find those that are not with the target LC
 	for _, i := range asg.Instances {
-		if *i.LaunchConfigurationName == *targetLc {
+		if i.LaunchConfigurationName != nil && *i.LaunchConfigurationName == *targetLc {
 			newInstances = append(newInstances, i)
 		} else {
 			oldInstances = append(oldInstances, i)
