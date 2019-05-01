@@ -20,15 +20,22 @@ func adjust(asgList []string, ec2Svc ec2iface.EC2API, asgSvc autoscalingiface.Au
 		return fmt.Errorf("Unexpected error describing ASGs, skipping: %v", err)
 	}
 	asgMap := map[string]*autoscaling.Group{}
-	for _, a := range asgs {
-		asgMap[*a.AutoScalingGroupName] = a
-	}
 	// get information on all of the ec2 instances
 	instances := make([]*autoscaling.Instance, 0)
 	for _, asg := range asgs {
 		oldI, newI := groupInstances(asg)
+		// if there are no outdated instances skip updating
+		if len(oldI) == 0 {
+			continue
+		}
+
+		asgMap[*asg.AutoScalingGroupName] = asg
 		instances = append(instances, oldI...)
 		instances = append(instances, newI...)
+	}
+	// no instances no work needed
+	if len(instances) == 0 {
+		return nil
 	}
 	ids := mapInstancesIds(instances)
 	hostnames, err := awsGetHostnames(ec2Svc, ids)
@@ -45,7 +52,7 @@ func adjust(asgList []string, ec2Svc ec2iface.EC2API, asgSvc autoscalingiface.Au
 	errors := map[*string]error{}
 
 	// keep keyed references to the ASGs
-	for _, asg := range asgs {
+	for _, asg := range asgMap {
 		newDesiredA, newOriginalA, terminateID, err := calculateAdjustment(asg, hostnameMap, readinessHandler, originalDesired[*asg.AutoScalingGroupName])
 		newDesired[*asg.AutoScalingGroupName] = newDesiredA
 		newOriginalDesired[*asg.AutoScalingGroupName] = newOriginalA

@@ -151,112 +151,156 @@ func TestCalculateAdjustment(t *testing.T) {
 
 func TestAdjust(t *testing.T) {
 	tests := []struct {
-		asgs               []string
-		handler            readiness
-		err                error
-		oldIds             map[string][]string
-		newIds             map[string][]string
-		originalDesired    map[string]int64
-		newOriginalDesired map[string]int64
-		newDesired         map[string]int64
-		terminate          []string
+		desc                    string
+		asgs                    []string
+		handler                 readiness
+		err                     error
+		oldIds                  map[string][]string
+		newIds                  map[string][]string
+		asgOriginalDesired      map[string]int64
+		originalDesired         map[string]int64
+		newOriginalDesired      map[string]int64
+		newDesired              map[string]int64
+		expectedOriginalDesired map[string]int64
+		terminate               []string
 	}{
-		{[]string{"myasg", "anotherasg"}, nil, nil, map[string][]string{"myasg": []string{"1"}, "anotherasg": []string{}}, map[string][]string{"myasg": []string{"2", "3"}, "anotherasg": []string{"8", "9", "10"}}, map[string]int64{"myasg": 2, "anotherasg": 10}, map[string]int64{"myasg": 2, "anotherasg": 0}, map[string]int64{"myasg": 2, "anotherasg": 10}, []string{"1"}},
+		{
+			"2 asgs adjust in progress",
+			[]string{"myasg", "anotherasg"},
+			nil,
+			nil,
+			map[string][]string{
+				"myasg":      []string{"1"},
+				"anotherasg": []string{},
+			},
+			map[string][]string{
+				"myasg":      []string{"2", "3"},
+				"anotherasg": []string{"8", "9", "10"},
+			},
+			map[string]int64{"myasg": 2, "anotherasg": 10},
+			map[string]int64{"myasg": 2, "anotherasg": 10},
+			map[string]int64{"myasg": 2, "anotherasg": 0},
+			map[string]int64{"myasg": 2},
+			map[string]int64{"myasg": 2, "anotherasg": 0},
+			[]string{"1"},
+		},
+		{
+			"2 asgs adjust first run",
+			[]string{"myasg", "anotherasg"},
+			nil,
+			nil,
+			map[string][]string{
+				"myasg":      []string{"1"},
+				"anotherasg": []string{},
+			},
+			map[string][]string{
+				"myasg":      []string{"2", "3"},
+				"anotherasg": []string{"8", "9", "10"},
+			},
+			map[string]int64{"myasg": 2},
+			map[string]int64{},
+			map[string]int64{"myasg": 2},
+			map[string]int64{"myasg": 3},
+			map[string]int64{"myasg": 2},
+			[]string{},
+		},
 	}
 
 	for i, tt := range tests {
-		validGroups := map[string]*autoscaling.Group{}
-		for _, n := range tt.asgs {
-			name := fmt.Sprintf("%s", n)
-			lcName := "lconfig"
-			oldLcName := fmt.Sprintf("old%s", lcName)
-			myHealthy := fmt.Sprintf("%s", healthy)
-			desired := tt.originalDesired[name]
-			instances := make([]*autoscaling.Instance, 0)
-			for _, id := range tt.oldIds[name] {
-				idd := fmt.Sprintf("%s", id)
-				instances = append(instances, &autoscaling.Instance{
-					InstanceId:              &idd,
-					LaunchConfigurationName: &oldLcName,
-					HealthStatus:            &myHealthy,
-				})
-			}
-			for _, id := range tt.newIds[name] {
-				idd := fmt.Sprintf("%s", id)
-				instances = append(instances, &autoscaling.Instance{
-					InstanceId:              &idd,
+		t.Run(tt.desc, func(t *testing.T) {
+			validGroups := map[string]*autoscaling.Group{}
+			for _, n := range tt.asgs {
+				name := fmt.Sprintf("%s", n)
+				lcName := "lconfig"
+				oldLcName := fmt.Sprintf("old%s", lcName)
+				myHealthy := fmt.Sprintf("%s", healthy)
+				desired := tt.asgOriginalDesired[name]
+				instances := make([]*autoscaling.Instance, 0)
+				for _, id := range tt.oldIds[name] {
+					idd := fmt.Sprintf("%s", id)
+					instances = append(instances, &autoscaling.Instance{
+						InstanceId:              &idd,
+						LaunchConfigurationName: &oldLcName,
+						HealthStatus:            &myHealthy,
+					})
+				}
+				for _, id := range tt.newIds[name] {
+					idd := fmt.Sprintf("%s", id)
+					instances = append(instances, &autoscaling.Instance{
+						InstanceId:              &idd,
+						LaunchConfigurationName: &lcName,
+						HealthStatus:            &myHealthy,
+					})
+				}
+				// construct the Group we will pass
+				validGroups[n] = &autoscaling.Group{
+					AutoScalingGroupName:    &name,
+					DesiredCapacity:         &desired,
+					Instances:               instances,
 					LaunchConfigurationName: &lcName,
-					HealthStatus:            &myHealthy,
-				})
+				}
 			}
-			// construct the Group we will pass
-			validGroups[n] = &autoscaling.Group{
-				AutoScalingGroupName:    &name,
-				DesiredCapacity:         &desired,
-				Instances:               instances,
-				LaunchConfigurationName: &lcName,
+			asgSvc := &mockAsgSvc{
+				groups: validGroups,
 			}
-		}
-		asgSvc := &mockAsgSvc{
-			groups: validGroups,
-		}
-		ec2Svc := &mockEc2Svc{
-			autodescribe: true,
-		}
-		// convert maps from map[string] to map[*string]
-		originalDesiredPtr := map[*string]int64{}
-		for k, v := range tt.originalDesired {
-			ks := fmt.Sprintf("%s", k)
-			originalDesiredPtr[&ks] = v
-		}
-		newDesiredPtr := map[*string]int64{}
-		for k, v := range tt.newDesired {
-			ks := fmt.Sprintf("%s", k)
-			newDesiredPtr[&ks] = v
-		}
-		err := adjust(tt.asgs, ec2Svc, asgSvc, tt.handler, tt.originalDesired)
-		// what were our last calls to each?
-		switch {
-		case (err == nil && tt.err != nil) || (err != nil && tt.err == nil) || (err != nil && tt.err != nil && !strings.HasPrefix(err.Error(), tt.err.Error())):
-			t.Errorf("%d: mismatched errors, actual then expected", i)
-			t.Logf("%v", err)
-			t.Logf("%v", tt.err)
-		case !testStringInt64MapEq(tt.newOriginalDesired, tt.originalDesired):
-			t.Errorf("%d: Mismatched desired, actual then expected", i)
-			t.Logf("%v", tt.originalDesired)
-			t.Logf("%v", tt.newOriginalDesired)
-		}
+			ec2Svc := &mockEc2Svc{
+				autodescribe: true,
+			}
+			// convert maps from map[string] to map[*string]
+			originalDesiredPtr := map[*string]int64{}
+			for k, v := range tt.originalDesired {
+				ks := fmt.Sprintf("%s", k)
+				originalDesiredPtr[&ks] = v
+			}
+			newDesiredPtr := map[*string]int64{}
+			for k, v := range tt.newDesired {
+				ks := fmt.Sprintf("%s", k)
+				newDesiredPtr[&ks] = v
+			}
+			err := adjust(tt.asgs, ec2Svc, asgSvc, tt.handler, tt.originalDesired)
+			// what were our last calls to each?
+			switch {
+			case (err == nil && tt.err != nil) || (err != nil && tt.err == nil) || (err != nil && tt.err != nil && !strings.HasPrefix(err.Error(), tt.err.Error())):
+				t.Errorf("%d: mismatched errors, actual then expected", i)
+				t.Logf("%v", err)
+				t.Logf("%v", tt.err)
+			case !testStringInt64MapEq(tt.newOriginalDesired, tt.expectedOriginalDesired):
+				t.Errorf("%d: Mismatched desired, actual then expected", i)
+				t.Logf("%v", tt.originalDesired)
+				t.Logf("%v", tt.newOriginalDesired)
+			}
 
-		// check each svc with its correct calls
-		desiredCalls := asgSvc.counter.filterByName("SetDesiredCapacity")
-		if len(desiredCalls) != len(tt.newDesired) {
-			t.Errorf("%d: Expected %d SetDesiredCapacity calls but had %d", i, len(tt.newDesired), len(desiredCalls))
-		}
-		// sort through by the relevant inputs
-		for _, d := range desiredCalls {
-			asg := d.params[0].(*autoscaling.SetDesiredCapacityInput)
-			name := asg.AutoScalingGroupName
-			if *asg.DesiredCapacity != tt.newDesired[*name] {
-				t.Errorf("%d: Mismatched call to set capacity for ASG '%s': actual %d, expected %d", i, *name, *asg.DesiredCapacity, tt.newDesired[*name])
+			// check each svc with its correct calls
+			desiredCalls := asgSvc.counter.filterByName("SetDesiredCapacity")
+			if len(desiredCalls) != len(tt.newDesired) {
+				t.Errorf("%d: Expected %d SetDesiredCapacity calls but had %d", i, len(tt.newDesired), len(desiredCalls))
 			}
-		}
-		// convert list of terminations into map
-		ids := map[string]bool{}
-		for _, id := range tt.terminate {
-			ids[id] = true
-		}
-		terminateCalls := asgSvc.counter.filterByName("TerminateInstanceInAutoScalingGroup")
-		if len(terminateCalls) != len(tt.terminate) {
-			t.Errorf("%d: Expected %d Terminate calls but had %d", i, len(tt.terminate), len(terminateCalls))
-		}
-		for _, d := range terminateCalls {
-			in := d.params[0].(*autoscaling.TerminateInstanceInAutoScalingGroupInput)
-			id := in.InstanceId
-			if _, ok := ids[*id]; !ok {
-				t.Errorf("%d: Requested call to terminate instance %s, unexpected", i, *id)
+			// sort through by the relevant inputs
+			for _, d := range desiredCalls {
+				asg := d.params[0].(*autoscaling.SetDesiredCapacityInput)
+				name := asg.AutoScalingGroupName
+				if *asg.DesiredCapacity != tt.newDesired[*name] {
+					t.Errorf("%d: Mismatched call to set capacity for ASG '%s': actual %d, expected %d", i, *name, *asg.DesiredCapacity, tt.newDesired[*name])
+				}
 			}
-		}
+			// convert list of terminations into map
+			ids := map[string]bool{}
+			for _, id := range tt.terminate {
+				ids[id] = true
+			}
+			terminateCalls := asgSvc.counter.filterByName("TerminateInstanceInAutoScalingGroup")
+			if len(terminateCalls) != len(tt.terminate) {
+				t.Errorf("%d: Expected %d Terminate calls but had %d", i, len(tt.terminate), len(terminateCalls))
+			}
+			for _, d := range terminateCalls {
+				in := d.params[0].(*autoscaling.TerminateInstanceInAutoScalingGroupInput)
+				id := in.InstanceId
+				if _, ok := ids[*id]; !ok {
+					t.Errorf("%d: Requested call to terminate instance %s, unexpected", i, *id)
+				}
+			}
 
+		})
 	}
 }
 
