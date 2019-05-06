@@ -208,3 +208,22 @@ ASG Roller takes its configuration via environment variables. All environment va
 * `ROLLER_KUBERNETES`: If set to `true`, will check if a new node is ready via-a-vis Kubernetes before declaring it "ready", and will drain an old node before eliminating it. Defaults to `true` when running in Kubernetes as a pod, `false` otherwise.
 * `ROLLER_IGNORE_DAEMONSETS`: If set to `false`, will not reclaim a node until there are no DaemonSets running on the node; if set to `true` (default), will reclaim node when all regular pods are drained off, but will ignore the presence of DaemonSets, which should be present on every node anyways. Normally, you want this set to `true`, which is the default.
 * `KUBECONFIG`: Path to kubernetes config file for authenticating to the kubernetes cluster. Required only if `ROLLER_KUBERNETES` is `true` and we are not operating in a kubernetes cluster.
+
+## Building
+
+The only pre-requisite for building is [docker](https://docker.com). All builds take place inside a docker container. If you want, you _may_ build locally using locally installed go. It requires go version 1.12+.
+
+To build:
+
+```sh
+$ make build      # builds the binary via docker in `bin/aws-asg-roller-${OS}-${ARCH}
+$ make image      # builds the docker image
+```
+
+To build locally:
+
+```sh
+$ make build BUILD=local     # builds the binary via locally installed go in `bin/aws-asg-roller-${OS}-${ARCH}
+$ make image BUILD=local     # builds the docker image
+```
+
