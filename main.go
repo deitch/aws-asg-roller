@@ -1,14 +1,16 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 )
 
 const (
-	asgCheckDelay = 30 // delay between checks of ASG status in seconds
+	asgCheckDelay = 30 // Default delay between checks of ASG status in seconds
 )
 
 func main() {
@@ -34,14 +36,33 @@ func main() {
 	// to keep track of original target sizes during rolling updates
 	originalDesired := map[string]int64{}
 
+	checkDelay, err := getDelay()
+	if err != nil {
+		log.Fatalf("Unable to get delay: %s", err.Error())
+	}
+
 	// infinite loop
 	for {
 		// delay with each loop
-		log.Printf("Sleeping %d seconds\n", asgCheckDelay)
-		time.Sleep(asgCheckDelay * time.Second)
+		log.Printf("Sleeping %d seconds\n", checkDelay)
+		time.Sleep(time.Duration(checkDelay) * time.Second)
 		err = adjust(asgList, ec2Svc, asgSvc, readinessHandler, originalDesired)
 		if err != nil {
 			log.Printf("Error adjusting AutoScaling Groups: %v", err)
 		}
 	}
+}
+
+// Returns delay value to use in loop. Uses default if not defined.
+func getDelay() (int, error) {
+	delayOverride, exist := os.LookupEnv("ROLLER_CHECK_DELAY")
+	if exist {
+		delay, err := strconv.Atoi(delayOverride)
+		if err != nil {
+			return -1, fmt.Errorf("ROLLER_CHECK_DELAY is not parsable: %v (%s)", delayOverride, err.Error())
+		}
+		return delay, nil
+	}
+
+	return asgCheckDelay, nil
 }
