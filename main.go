@@ -43,13 +43,13 @@ func main() {
 
 	// infinite loop
 	for {
-		// delay with each loop
-		log.Printf("Sleeping %d seconds\n", checkDelay)
-		time.Sleep(time.Duration(checkDelay) * time.Second)
 		err = adjust(asgList, ec2Svc, asgSvc, readinessHandler, originalDesired)
 		if err != nil {
 			log.Printf("Error adjusting AutoScaling Groups: %v", err)
 		}
+		// delay with each loop
+		log.Printf("Sleeping %d seconds\n", checkDelay)
+		time.Sleep(time.Duration(checkDelay) * time.Second)
 	}
 }
 
