@@ -3,8 +3,10 @@ package main
 import (
 	"fmt"
 
+	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/autoscaling"
 	"github.com/aws/aws-sdk-go/service/autoscaling/autoscalingiface"
+	"github.com/aws/aws-sdk-go/service/ec2"
 	"github.com/aws/aws-sdk-go/service/ec2/ec2iface"
 )
 
@@ -23,7 +25,10 @@ func adjust(asgList []string, ec2Svc ec2iface.EC2API, asgSvc autoscalingiface.Au
 	// get information on all of the ec2 instances
 	instances := make([]*autoscaling.Instance, 0)
 	for _, asg := range asgs {
-		oldI, newI := groupInstances(asg)
+		oldI, newI, err := groupInstances(asg, ec2Svc)
+		if err != nil {
+			return fmt.Errorf("unable to group instances into new and old: %v", err)
+		}
 		// if there are no outdated instances skip updating
 		if len(oldI) == 0 {
 			continue
@@ -53,7 +58,7 @@ func adjust(asgList []string, ec2Svc ec2iface.EC2API, asgSvc autoscalingiface.Au
 
 	// keep keyed references to the ASGs
 	for _, asg := range asgMap {
-		newDesiredA, newOriginalA, terminateID, err := calculateAdjustment(asg, hostnameMap, readinessHandler, originalDesired[*asg.AutoScalingGroupName])
+		newDesiredA, newOriginalA, terminateID, err := calculateAdjustment(asg, ec2Svc, hostnameMap, readinessHandler, originalDesired[*asg.AutoScalingGroupName])
 		newDesired[*asg.AutoScalingGroupName] = newDesiredA
 		newOriginalDesired[*asg.AutoScalingGroupName] = newOriginalA
 		if terminateID != "" {
@@ -90,11 +95,14 @@ func adjust(asgList []string, ec2Svc ec2iface.EC2API, asgSvc autoscalingiface.Au
 //   what the new original desired should be, primarily if it should be reset
 //   ID of an instance to terminate, "" if none
 //   error
-func calculateAdjustment(asg *autoscaling.Group, hostnameMap map[string]string, readinessHandler readiness, originalDesired int64) (int64, int64, string, error) {
+func calculateAdjustment(asg *autoscaling.Group, ec2Svc ec2iface.EC2API, hostnameMap map[string]string, readinessHandler readiness, originalDesired int64) (int64, int64, string, error) {
 	desired := *asg.DesiredCapacity
 
 	// get instances with old launch config
-	oldInstances, newInstances := groupInstances(asg)
+	oldInstances, newInstances, err := groupInstances(asg, ec2Svc)
+	if err != nil {
+		return originalDesired, 0, "", fmt.Errorf("unable to group instances into new and old: %v", err)
+	}
 
 	// Possibilities:
 	// 1- we have some old ones, but have not started updates yet: set the desired, increment and loop
@@ -177,19 +185,71 @@ func calculateAdjustment(asg *autoscaling.Group, hostnameMap map[string]string, 
 	return desired, originalDesired, candidate, nil
 }
 
-func groupInstances(asg *autoscaling.Group) ([]*autoscaling.Instance, []*autoscaling.Instance) {
+// groupInstances handles all of the logic for determining which nodes in the ASG have an old or outdated
+// config, and which are up to date. It should to nothing else.
+// The entire rest of the code should rely on this for making the determination
+func groupInstances(asg *autoscaling.Group, ec2Svc ec2iface.EC2API) ([]*autoscaling.Instance, []*autoscaling.Instance, error) {
 	oldInstances := make([]*autoscaling.Instance, 0)
 	newInstances := make([]*autoscaling.Instance, 0)
+	// we want to be able to handle LaunchTemplate as well
 	targetLc := asg.LaunchConfigurationName
-	// go through each instance and find those that are not with the target LC
-	for _, i := range asg.Instances {
-		if i.LaunchConfigurationName != nil && *i.LaunchConfigurationName == *targetLc {
-			newInstances = append(newInstances, i)
-		} else {
-			oldInstances = append(oldInstances, i)
+	targetLt := asg.LaunchTemplate
+	// prioritize LaunchTemplate over LaunchConfiguration
+	if targetLt != nil {
+		// we are using LaunchTemplate. Unlike LaunchConfiguration, you can have two nodes in the ASG
+		//  with the same LT name, same ID but different versions, so need to check version.
+		//  they even can have the same version, if the version is `$Latest` or `$Default`, so need
+		//  to get actual versions for each
+		var (
+			targetTemplate *ec2.LaunchTemplate
+			err            error
+		)
+		switch {
+		case targetLt.LaunchTemplateId != nil && *targetLt.LaunchTemplateId != "":
+			if targetTemplate, err = awsGetLaunchTemplateByID(ec2Svc, *targetLt.LaunchTemplateId); err != nil {
+				return nil, nil, fmt.Errorf("error retrieving information about launch template ID %s: %v", *targetLt.LaunchTemplateId, err)
+			}
+		case targetLt.LaunchTemplateName != nil && *targetLt.LaunchTemplateName != "":
+			if targetTemplate, err = awsGetLaunchTemplateByName(ec2Svc, *targetLt.LaunchTemplateName); err != nil {
+				return nil, nil, fmt.Errorf("error retrieving information about launch template name %s: %v", *targetLt.LaunchTemplateName, err)
+			}
+		default:
+			return nil, nil, fmt.Errorf("AutoScaling Group %s had invalid Launch Template", *asg.AutoScalingGroupName)
+		}
+		// extra safety check
+		if targetTemplate == nil {
+			return nil, nil, fmt.Errorf("no template found")
+		}
+		// now we can loop through each node and compare
+		for _, i := range asg.Instances {
+			switch {
+			case i.LaunchTemplate == nil:
+				// has no launch template at all
+				oldInstances = append(oldInstances, i)
+			case aws.StringValue(i.LaunchTemplate.LaunchTemplateName) != aws.StringValue(targetLt.LaunchTemplateName):
+				// mismatched named
+				oldInstances = append(oldInstances, i)
+			case aws.StringValue(i.LaunchTemplate.LaunchTemplateId) != aws.StringValue(targetLt.LaunchTemplateId):
+				// mismatched ID
+				oldInstances = append(oldInstances, i)
+			// name and id match, just need to check versions
+			case !compareLaunchTemplateVersions(targetTemplate, targetLt, i.LaunchTemplate):
+				oldInstances = append(oldInstances, i)
+			default:
+				newInstances = append(newInstances, i)
+			}
+		}
+	} else {
+		// go through each instance and find those that are not with the target LC
+		for _, i := range asg.Instances {
+			if i.LaunchConfigurationName != nil && *i.LaunchConfigurationName == *targetLc {
+				newInstances = append(newInstances, i)
+			} else {
+				oldInstances = append(oldInstances, i)
+			}
 		}
 	}
-	return oldInstances, newInstances
+	return oldInstances, newInstances, nil
 }
 
 func mapInstancesIds(instances []*autoscaling.Instance) []string {
@@ -198,4 +258,44 @@ func mapInstancesIds(instances []*autoscaling.Instance) []string {
 		ids = append(ids, *i.InstanceId)
 	}
 	return ids
+}
+
+// compareLaunchTemplateVersions compare two launch template versions and see if they match
+// can handle `$Latest` and `$Default` by resolving to the actual version in use
+func compareLaunchTemplateVersions(targetTemplate *ec2.LaunchTemplate, lt1, lt2 *autoscaling.LaunchTemplateSpecification) bool {
+	// if both versions do not start with `$`, then just compare
+	if lt1 == nil && lt2 == nil {
+		return true
+	}
+	if (lt1 == nil && lt2 != nil) || (lt1 != nil && lt2 == nil) {
+		return false
+	}
+	if lt1.Version == nil && lt2.Version == nil {
+		return true
+	}
+	if (lt1.Version == nil && lt2.Version != nil) || (lt1.Version != nil && lt2.Version == nil) {
+		return false
+	}
+	// if either version starts with `$`, then resolve to actual version from LaunchTemplate
+	var lt1version, lt2version string
+	switch *lt1.Version {
+	case "$Default":
+		lt1version = fmt.Sprintf("%d", targetTemplate.DefaultVersionNumber)
+	case "$Latest":
+		lt1version = fmt.Sprintf("%d", targetTemplate.LatestVersionNumber)
+	default:
+		lt1version = *lt1.Version
+	}
+	switch *lt2.Version {
+	case "$Default":
+		lt2version = fmt.Sprintf("%d", targetTemplate.DefaultVersionNumber)
+	case "$Latest":
+		lt2version = fmt.Sprintf("%d", targetTemplate.LatestVersionNumber)
+	default:
+		lt2version = *lt2.Version
+	}
+	if lt1version != lt2version {
+		return false
+	}
+	return true
 }

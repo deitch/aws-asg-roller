@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/service/autoscaling"
 	"github.com/aws/aws-sdk-go/service/autoscaling/autoscalingiface"
@@ -29,6 +30,29 @@ func testASGEq(a, b []*autoscaling.Group) bool {
 		}
 	}
 	return true
+}
+
+var validLaunchTemplates = map[string]*ec2.LaunchTemplate{
+	"12345": &ec2.LaunchTemplate{
+		LaunchTemplateId:     aws.String("12345"),
+		LatestVersionNumber:  aws.Int64(65),
+		DefaultVersionNumber: aws.Int64(59),
+	},
+	"67890": &ec2.LaunchTemplate{
+		LaunchTemplateId:     aws.String("67890"),
+		LatestVersionNumber:  aws.Int64(10),
+		DefaultVersionNumber: aws.Int64(10),
+	},
+	"lt1": &ec2.LaunchTemplate{
+		LaunchTemplateName:   aws.String("lt1"),
+		LatestVersionNumber:  aws.Int64(4),
+		DefaultVersionNumber: aws.Int64(1),
+	},
+	"lt2": &ec2.LaunchTemplate{
+		LaunchTemplateName:   aws.String("lt2"),
+		LatestVersionNumber:  aws.Int64(40),
+		DefaultVersionNumber: aws.Int64(30),
+	},
 }
 
 type mockEc2Svc struct {
@@ -68,6 +92,29 @@ func (m *mockEc2Svc) DescribeInstances(in *ec2.DescribeInstancesInput) (*ec2.Des
 				Instances: instances,
 			},
 		},
+	}
+	return ret, nil
+}
+
+func (m *mockEc2Svc) DescribeLaunchTemplates(in *ec2.DescribeLaunchTemplatesInput) (*ec2.DescribeLaunchTemplatesOutput, error) {
+	m.counter.add("DescribeLaunchTemplates:", in)
+	templates := make([]*ec2.LaunchTemplate, 0)
+	for _, i := range in.LaunchTemplateIds {
+		for _, t := range validLaunchTemplates {
+			if t.LaunchTemplateId != nil && *t.LaunchTemplateId == *i {
+				templates = append(templates, t)
+			}
+		}
+	}
+	for _, i := range in.LaunchTemplateNames {
+		for _, t := range validLaunchTemplates {
+			if t.LaunchTemplateName != nil && *t.LaunchTemplateName == *i {
+				templates = append(templates, t)
+			}
+		}
+	}
+	ret := &ec2.DescribeLaunchTemplatesOutput{
+		LaunchTemplates: templates,
 	}
 	return ret, nil
 }
@@ -263,4 +310,45 @@ func TestAwsSetAsgDesired(t *testing.T) {
 			t.Logf("%v", tt.err)
 		}
 	}
+}
+
+func TestAwsGetLaunchTemplate(t *testing.T) {
+	tests := []struct {
+		names    []string
+		ids      []string
+		template *ec2.LaunchTemplate
+		err      error
+	}{
+		{nil, nil, nil, nil}, // nothing passed, should get nothing back but no errors
+		{[]string{"lt1", "lt2"}, nil, validLaunchTemplates["lt1"], nil},                          // two names match, so should get first one
+		{[]string{"lt2", "lt1"}, nil, validLaunchTemplates["lt2"], nil},                          // two names match, so should get first one
+		{nil, []string{"12345", "67890"}, validLaunchTemplates["12345"], nil},                    // two ids match, so should get first one
+		{nil, []string{"67890", "12345"}, validLaunchTemplates["67890"], nil},                    // two ids match, so should get first one
+		{[]string{"lt2", "lt1"}, []string{"67890", "12345"}, validLaunchTemplates["67890"], nil}, // ids override names
+	}
+	for i, tt := range tests {
+		input := &ec2.DescribeLaunchTemplatesInput{
+			LaunchTemplateNames: aws.StringSlice(tt.names),
+			LaunchTemplateIds:   aws.StringSlice(tt.ids),
+		}
+		template, err := awsGetLaunchTemplate(&mockEc2Svc{}, input)
+		switch {
+		case (err == nil && tt.err != nil) || (err != nil && tt.err == nil) || (err != nil && tt.err != nil && !strings.HasPrefix(err.Error(), tt.err.Error())):
+			t.Errorf("%d: Mismatched error, actual then expected", i)
+			t.Logf("%v", err)
+			t.Logf("%v", tt.err)
+		case (template == nil && tt.template != nil) || (template != nil && tt.template == nil):
+			t.Errorf("%d: Mismatched nil/not-nil templates, actual then expected", i)
+			t.Logf("%v:", template)
+			t.Logf("%v:", tt.template)
+		case template != nil && tt.template != nil && !testCompareLaunchTemplate(template, tt.template):
+			t.Errorf("%d: Mismatched templates, actual then expected", i)
+			t.Logf("%v:", template)
+			t.Logf("%v:", tt.template)
+		}
+	}
+}
+
+func testCompareLaunchTemplate(t1, t2 *ec2.LaunchTemplate) bool {
+	return t1.LaunchTemplateName == t2.LaunchTemplateName && t1.LaunchTemplateId == t2.LaunchTemplateId && t1.DefaultVersionNumber == t2.DefaultVersionNumber && t1.LatestVersionNumber == t2.LatestVersionNumber
 }

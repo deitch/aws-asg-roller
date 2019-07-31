@@ -5,7 +5,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/autoscaling"
+	"github.com/aws/aws-sdk-go/service/ec2"
 )
 
 type testReadyHandler struct {
@@ -133,7 +135,10 @@ func TestCalculateAdjustment(t *testing.T) {
 			LaunchConfigurationName: &lcName,
 			Instances:               instances,
 		}
-		desired, originalDesired, terminate, err := calculateAdjustment(asg, hostnameMap, tt.readiness, tt.originalDesired)
+		ec2Svc := &mockEc2Svc{
+			autodescribe: true,
+		}
+		desired, originalDesired, terminate, err := calculateAdjustment(asg, ec2Svc, hostnameMap, tt.readiness, tt.originalDesired)
 		switch {
 		case (err == nil && tt.err != nil) || (err != nil && tt.err == nil) || (err != nil && tt.err != nil && !strings.HasPrefix(err.Error(), tt.err.Error())):
 			t.Errorf("%d: mismatched errors, actual then expected", i)
@@ -305,39 +310,15 @@ func TestAdjust(t *testing.T) {
 }
 
 func TestGroupInstances(t *testing.T) {
-	tests := []struct {
-		oldIds []string
-		newIds []string
-	}{
-		{[]string{"1", "2"}, []string{"3"}},
-		{[]string{"1", "2", "3"}, []string{}},
-		{[]string{}, []string{"1", "2", "3"}},
-	}
-	for i, tt := range tests {
-		instances := make([]*autoscaling.Instance, 0)
-		lcName := "lcname"
-		lcNameNew := fmt.Sprintf("%s", lcName)
-		lcNameOld := fmt.Sprintf("old-%s", lcName)
-		for _, instance := range tt.oldIds {
-			id := fmt.Sprintf("%s", instance)
-			instances = append(instances, &autoscaling.Instance{
-				InstanceId:              &id,
-				LaunchConfigurationName: &lcNameOld,
-			})
+	runTest := func(t *testing.T, asg *autoscaling.Group, i int, oldIds, newIds []string) {
+		ec2Svc := &mockEc2Svc{
+			autodescribe: true,
 		}
-		for _, instance := range tt.newIds {
-			id := fmt.Sprintf("%s", instance)
-			instances = append(instances, &autoscaling.Instance{
-				InstanceId:              &id,
-				LaunchConfigurationName: &lcNameNew,
-			})
+		oldInstances, newInstances, err := groupInstances(asg, ec2Svc)
+		if err != nil {
+			t.Errorf("unexpected error grouping instances: %v", err)
+			return
 		}
-		// construct the Group we will pass
-		asg := &autoscaling.Group{
-			LaunchConfigurationName: &lcName,
-			Instances:               instances,
-		}
-		oldInstances, newInstances := groupInstances(asg)
 		oldList := make([]string, 0)
 		newList := make([]string, 0)
 		for _, i := range oldInstances {
@@ -346,13 +327,77 @@ func TestGroupInstances(t *testing.T) {
 		for _, i := range newInstances {
 			newList = append(newList, *i.InstanceId)
 		}
-		if !testStringEq(oldList, tt.oldIds) {
-			t.Errorf("%d: mismatched old Ids. Actual %v, expected %v", i, oldList, tt.oldIds)
+		if !testStringEq(oldList, oldIds) {
+			t.Errorf("%d: mismatched old Ids. Actual %v, expected %v", i, oldList, oldIds)
 		}
-		if !testStringEq(newList, tt.newIds) {
-			t.Errorf("%d: mismatched new Ids. Actual %v, expected %v", i, newList, tt.newIds)
+		if !testStringEq(newList, newIds) {
+			t.Errorf("%d: mismatched new Ids. Actual %v, expected %v", i, newList, newIds)
 		}
 	}
+	tests := []struct {
+		oldIds []string
+		newIds []string
+	}{
+		{[]string{"1", "2"}, []string{"3"}},
+		{[]string{"1", "2", "3"}, []string{}},
+		{[]string{}, []string{"1", "2", "3"}},
+	}
+	t.Run("launchconfiguration", func(t *testing.T) {
+		for i, tt := range tests {
+			instances := make([]*autoscaling.Instance, 0)
+			lcName := "lcname"
+			lcNameNew := fmt.Sprintf("%s", lcName)
+			lcNameOld := fmt.Sprintf("old-%s", lcName)
+			for _, instance := range tt.oldIds {
+				id := fmt.Sprintf("%s", instance)
+				instances = append(instances, &autoscaling.Instance{
+					InstanceId:              &id,
+					LaunchConfigurationName: &lcNameOld,
+				})
+			}
+			for _, instance := range tt.newIds {
+				id := fmt.Sprintf("%s", instance)
+				instances = append(instances, &autoscaling.Instance{
+					InstanceId:              &id,
+					LaunchConfigurationName: &lcNameNew,
+				})
+			}
+			// construct the Group we will pass
+			asg := &autoscaling.Group{
+				LaunchConfigurationName: &lcName,
+				Instances:               instances,
+			}
+			runTest(t, asg, i, tt.oldIds, tt.newIds)
+		}
+	})
+	t.Run("launchtemplate", func(t *testing.T) {
+		for i, tt := range tests {
+			instances := make([]*autoscaling.Instance, 0)
+			ltName := "lt1"
+			ltNameNew := fmt.Sprintf("%s", ltName)
+			ltNameOld := fmt.Sprintf("old-%s", ltName)
+			for _, instance := range tt.oldIds {
+				id := fmt.Sprintf("%s", instance)
+				instances = append(instances, &autoscaling.Instance{
+					InstanceId:     &id,
+					LaunchTemplate: &autoscaling.LaunchTemplateSpecification{LaunchTemplateName: &ltNameOld},
+				})
+			}
+			for _, instance := range tt.newIds {
+				id := fmt.Sprintf("%s", instance)
+				instances = append(instances, &autoscaling.Instance{
+					InstanceId:     &id,
+					LaunchTemplate: &autoscaling.LaunchTemplateSpecification{LaunchTemplateName: &ltNameNew},
+				})
+			}
+			// construct the Group we will pass
+			asg := &autoscaling.Group{
+				LaunchTemplate: &autoscaling.LaunchTemplateSpecification{LaunchTemplateName: &ltName},
+				Instances:      instances,
+			}
+			runTest(t, asg, i, tt.oldIds, tt.newIds)
+		}
+	})
 }
 
 func TestMapInstanceIds(t *testing.T) {
@@ -367,5 +412,31 @@ func TestMapInstanceIds(t *testing.T) {
 	m := mapInstancesIds(instances)
 	if !testStringEq(m, ids) {
 		t.Errorf("mismatched ids. Actual %v, expected %v", m, ids)
+	}
+}
+
+func TestCompareLaunchTemplateVersions(t *testing.T) {
+	template := &ec2.LaunchTemplate{
+		DefaultVersionNumber: aws.Int64(25),
+		LatestVersionNumber:  aws.Int64(64),
+	}
+	tests := []struct {
+		lt1      *autoscaling.LaunchTemplateSpecification
+		lt2      *autoscaling.LaunchTemplateSpecification
+		expected bool
+	}{
+		{nil, nil, true},
+		{nil, &autoscaling.LaunchTemplateSpecification{}, false},
+		{&autoscaling.LaunchTemplateSpecification{}, nil, false},
+		{&autoscaling.LaunchTemplateSpecification{}, &autoscaling.LaunchTemplateSpecification{}, true},
+		{&autoscaling.LaunchTemplateSpecification{Version: aws.String("25")}, &autoscaling.LaunchTemplateSpecification{}, false},
+		{&autoscaling.LaunchTemplateSpecification{Version: aws.String("25")}, &autoscaling.LaunchTemplateSpecification{Version: aws.String("26")}, false},
+		{&autoscaling.LaunchTemplateSpecification{Version: aws.String("25")}, &autoscaling.LaunchTemplateSpecification{Version: aws.String("25")}, true},
+	}
+	for i, tt := range tests {
+		result := compareLaunchTemplateVersions(template, tt.lt1, tt.lt2)
+		if result != tt.expected {
+			t.Errorf("%d: mismatched results, received %v expected %v", i, result, tt.expected)
+		}
 	}
 }
