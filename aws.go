@@ -48,6 +48,33 @@ func awsGetHostname(svc ec2iface.EC2API, id string) (string, error) {
 	}
 	return hostnames[0], nil
 }
+func awsGetLaunchTemplateByID(svc ec2iface.EC2API, id string) (*ec2.LaunchTemplate, error) {
+	input := &ec2.DescribeLaunchTemplatesInput{
+		LaunchTemplateIds: []*string{
+			aws.String(id),
+		},
+	}
+	return awsGetLaunchTemplate(svc, input)
+}
+func awsGetLaunchTemplateByName(svc ec2iface.EC2API, name string) (*ec2.LaunchTemplate, error) {
+	input := &ec2.DescribeLaunchTemplatesInput{
+		LaunchTemplateNames: []*string{
+			aws.String(name),
+		},
+	}
+	return awsGetLaunchTemplate(svc, input)
+}
+func awsGetLaunchTemplate(svc ec2iface.EC2API, input *ec2.DescribeLaunchTemplatesInput) (*ec2.LaunchTemplate, error) {
+	templatesOutput, err := svc.DescribeLaunchTemplates(input)
+	descriptiveMsg := fmt.Sprintf("%v / %v", input.LaunchTemplateIds, input.LaunchTemplateNames)
+	if err != nil {
+		return nil, fmt.Errorf("Unable to get description for Launch Template %s: %v", descriptiveMsg, err)
+	}
+	if len(templatesOutput.LaunchTemplates) < 1 {
+		return nil, nil
+	}
+	return templatesOutput.LaunchTemplates[0], nil
+}
 func awsGetHostnames(svc ec2iface.EC2API, ids []string) ([]string, error) {
 	ec2input := &ec2.DescribeInstancesInput{
 		InstanceIds: aws.StringSlice(ids),

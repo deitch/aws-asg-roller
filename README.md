@@ -4,11 +4,11 @@ Rolling updates for AWS AutoScaling Groups!
 
 [https://github.com/deitch/aws-asg-roller](https://github.com/deitch/aws-asg-roller)
 
-AWS AutoScaling Groups (ASG) are wonderful. They let you declare a config, a minimum and maximum number of ec2 nodes, a desired number, and it keeps that number going for you. It even lets you set it up to scale up or down automatically based on cloudwatch events, effectively adjusting the desired number of nodes in the ASG, in response to load.
+AWS AutoScaling Groups (ASG) are wonderful. They let you declare a configuration, a minimum and maximum number of ec2 nodes, a desired number, and it keeps that number going for you. It even lets you set it up to scale up or down automatically based on cloudwatch events, effectively adjusting the desired number of nodes in the ASG, in response to load.
 
 The challenge is: how do you update it?
 
-If you change the launch configuration, it does **not** cause new nodes to be rolled in. Even if it did, you would want them to roll in sanely and slowly, one at a time, rather than all at once. Further, you may have app-specific "readiness" requirements, of which AWS simply isn't aware. For example, if you are running Kubernetes workloads on the nodes, you may want to drain the nodes _before_ terminating a node.
+If you change the launch configuration or launch template, it does **not** cause new nodes to be rolled in. Even if it did, you would want them to roll in sanely and slowly, one at a time, rather than all at once. Further, you may have app-specific "readiness" requirements, of which AWS simply isn't aware. For example, if you are running Kubernetes workloads on the nodes, you may want to drain the nodes _before_ terminating a node.
 
 [Terraform](https://terraform.io) does a decent job, with a little extra work, making a blue/green deployment:
 
@@ -20,7 +20,7 @@ If this is good enough for you, check out either [this](https://medium.com/@endo
 
 However, even if this "big bang" switchover works for you, you _still_ might want app-specific "readiness" before rolling over. To use our previous example, drain all of the existing Kubernetes workers before destroying the old ASG. The above blue/green examples do not work.
 
-The other offerred solution is to use CloudFormation. While the AWS ASG API does not offer rolling updates, AWS CloudFormation does. You can set the update method to `RollingUpdate`, and a change in the launch configuration will cause AWS to add a new node and terminate an old one when the new one is ready, one at a time, until all of the nodes are running the new configuration.
+The other offerred solution is to use CloudFormation. While the AWS ASG API does not offer rolling updates, AWS CloudFormation does. You can set the update method to `RollingUpdate`, and a change in the launch configuration or launch template will cause AWS to add a new node and terminate an old one when the new one is ready, one at a time, until all of the nodes are running the new configuration or template.
 
 This has two challenges:
 
@@ -30,15 +30,17 @@ This has two challenges:
 ## ASG Roller
 Enter ASG Roller.
 
-ASG Roller is a simple service that watches your AWS ASG, checks the nodes, and, if the nodes are not in sync with the config, updates them.
+ASG Roller is a simple service that watches your AWS ASG, checks the nodes, and, if the nodes are not in sync with the configuration or template, updates them.
 
 The update methodology is simple:
 
 1. Increment `desired` setting.
 2. Watch the new node come online.
 3. When new node is ready, select and terminate one old node.
-4. Repeat until the number of nodes with the correct configuration matches the _original_ `desired` setting. At this point, there is likely to be one old node left.
+4. Repeat until the number of nodes with the correct configuration or template matches the _original_ `desired` setting. At this point, there is likely to be one old node left.
 5. Decrement the `desired` setting.
+
+ASG Roller will check both launch configurations, comparing names of the launch configuration used, and launch templates, comparing ID or Name, and version.
 
 ## App Awareness
 In addition to the above, ASG Roller is able to insert app-specific logic at two distinct points:
@@ -209,6 +211,12 @@ ASG Roller takes its configuration via environment variables. All environment va
 * `ROLLER_IGNORE_DAEMONSETS`: If set to `false`, will not reclaim a node until there are no DaemonSets running on the node; if set to `true` (default), will reclaim node when all regular pods are drained off, but will ignore the presence of DaemonSets, which should be present on every node anyways. Normally, you want this set to `true`, which is the default.
 * `ROLLER_CHECK_DELAY`: Time, in seconds, between checks of ASG status.
 * `KUBECONFIG`: Path to kubernetes config file for authenticating to the kubernetes cluster. Required only if `ROLLER_KUBERNETES` is `true` and we are not operating in a kubernetes cluster.
+
+## Template or Configuration
+
+Ideally, AWS will enforce that every autoscaling group has only one of _either_ launch template _or_ launch configuration. In practice, we don't rely on it. Thus, if the autoscaling group has a launch template, it will use that. If it does not, it will fall back to using the launch configuration.
+
+Since AWS recommends launch templates over launch configurations going forward, and is likely to deprecate them eventually, this is a reasonable approach.
 
 ## Building
 

@@ -3,7 +3,7 @@ module github.com/deitch/aws-asg-roller
 go 1.12
 
 require (
-	github.com/aws/aws-sdk-go v1.15.73
+	github.com/aws/aws-sdk-go v1.21.8
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/ghodss/yaml v0.0.0-20150909031657-73d445a93680
 	github.com/go-log/log v0.1.0
@@ -15,7 +15,7 @@ require (
 	github.com/googleapis/gnostic v0.0.0-20170729233727-0c5108395e2d
 	github.com/gregjones/httpcache v0.0.0-20170728041850-787624de3eb7
 	github.com/imdario/mergo v0.3.6
-	github.com/jmespath/go-jmespath v0.0.0-20160202185014-0b12d6b521d8
+	github.com/jmespath/go-jmespath v0.0.0-20180206201540-c2b33e8439af
 	github.com/json-iterator/go v0.0.0-20180612202835-f2b4162afba3
 	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd
 	github.com/modern-go/reflect2 v0.0.0-20180701023420-4b7aa43c6742
