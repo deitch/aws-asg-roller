@@ -1,0 +1,2 @@
+#!/bin/bash
+docker build --build-arg OS=linux  --build-arg ARCH=amd64 -f $DOCKERFILE_PATH -t $IMAGE_NAME .

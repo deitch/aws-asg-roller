@@ -8,7 +8,7 @@ import (
 
 	drain "github.com/openshift/kubernetes-drain"
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/apis/meta/v1"
+	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
@@ -17,6 +17,7 @@ import (
 type kubernetesReadiness struct {
 	clientset        *kubernetes.Clientset
 	ignoreDaemonSets bool
+	deleteLocalData  bool
 }
 
 func (k *kubernetesReadiness) getUnreadyCount(hostnames []string, ids []string) (int, error) {
@@ -71,6 +72,7 @@ func (k *kubernetesReadiness) prepareTermination(hostnames []string, ids []strin
 			IgnoreDaemonsets:   k.ignoreDaemonSets,
 			GracePeriodSeconds: -1,
 			Force:              true,
+			DeleteLocalData:    k.deleteLocalData,
 		})
 		if err != nil {
 			return fmt.Errorf("Unexpected error draining kubernetes node %s: %v", hostname, err)
@@ -127,7 +129,7 @@ func homeDir() string {
 	return os.Getenv("USERPROFILE") // windows
 }
 
-func kubeGetReadinessHandler(ignoreDaemonSets bool) (readiness, error) {
+func kubeGetReadinessHandler(ignoreDaemonSets bool, deleteLocalData bool) (readiness, error) {
 	clientset, err := kubeGetClientset()
 	if err != nil {
 		log.Fatalf("Error getting kubernetes connection: %v", err)
@@ -135,5 +137,71 @@ func kubeGetReadinessHandler(ignoreDaemonSets bool) (readiness, error) {
 	if clientset == nil {
 		return nil, nil
 	}
-	return &kubernetesReadiness{clientset: clientset, ignoreDaemonSets: ignoreDaemonSets}, nil
+	return &kubernetesReadiness{clientset: clientset, ignoreDaemonSets: ignoreDaemonSets, deleteLocalData: deleteLocalData}, nil
+}
+
+// setScaleDownDisabledAnnotation set the "cluster-autoscaler.kubernetes.io/scale-down-disabled" annotation
+// on the list of nodes if required. Returns a list of hostname where the annotation
+// is applied.
+func setScaleDownDisabledAnnotation(hostnames []string) ([]string, error) {
+	// get the node reference - first need the hostname
+	var (
+		node      *corev1.Node
+		hostname  string
+		err       error
+		key       = "cluster-autoscaler.kubernetes.io/scale-down-disabled"
+		annotated = []string{}
+	)
+	clientset, err := kubeGetClientset()
+	if err != nil {
+		log.Fatalf("Error getting kubernetes connection: %v", err)
+	}
+	if clientset == nil {
+		return annotated, nil
+	}
+	nodes := clientset.CoreV1().Nodes()
+	for _, h := range hostnames {
+		node, err = nodes.Get(h, v1.GetOptions{})
+		if err != nil {
+			return annotated, fmt.Errorf("Unexpected error getting kubernetes node %s: %v", hostname, err)
+		}
+		annotations := node.GetAnnotations()
+		if value := annotations[key]; value != "true" {
+			annotations[key] = "true"
+			node.SetAnnotations(annotations)
+			nodes.Update(node)
+			annotated = append(annotated, h)
+		}
+	}
+	return annotated, nil
+}
+func removeScaleDownDisabledAnnotation(hostnames []string) error {
+	// get the node reference - first need the hostname
+	var (
+		node     *corev1.Node
+		hostname string
+		err      error
+		key      = "cluster-autoscaler.kubernetes.io/scale-down-disabled"
+	)
+	clientset, err := kubeGetClientset()
+	if err != nil {
+		log.Fatalf("Error getting kubernetes connection: %v", err)
+	}
+	if clientset == nil {
+		return nil
+	}
+	nodes := clientset.CoreV1().Nodes()
+	for _, h := range hostnames {
+		node, err = nodes.Get(h, v1.GetOptions{})
+		if err != nil {
+			return fmt.Errorf("Unexpected error getting kubernetes node %s: %v", hostname, err)
+		}
+		annotations := node.GetAnnotations()
+		if _, ok := annotations[key]; ok {
+			delete(annotations, key)
+			node.SetAnnotations(annotations)
+			nodes.Update(node)
+		}
+	}
+	return nil
 }
