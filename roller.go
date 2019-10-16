@@ -194,7 +194,8 @@ func calculateAdjustment(asg *autoscaling.Group, ec2Svc ec2iface.EC2API, hostnam
 			return desired, originalDesired, "", fmt.Errorf("Error getting readiness new node status: %v", err)
 		}
 		if unReadyCount > 0 {
-			return desired, originalDesired, "", fmt.Errorf("[%s] Nodes not ready: %d", *asg.AutoScalingGroupName, unReadyCount)
+			log.Printf("[%s] Nodes not ready: %d", *asg.AutoScalingGroupName, unReadyCount)
+			return desired, originalDesired, "", nil
 		}
 	}
 	candidate := *oldInstances[0].InstanceId

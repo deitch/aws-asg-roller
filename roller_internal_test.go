@@ -134,6 +134,7 @@ func TestCalculateAdjustment(t *testing.T) {
 			DesiredCapacity:         &tt.desired,
 			LaunchConfigurationName: &lcName,
 			Instances:               instances,
+			AutoScalingGroupName:    aws.String("myasg"),
 		}
 		ec2Svc := &mockEc2Svc{
 			autodescribe: true,
