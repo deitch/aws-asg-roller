@@ -15,7 +15,7 @@ const (
 
 func main() {
 	asgList := strings.Split(os.Getenv("ROLLER_ASG"), ",")
-	if asgList == nil || len(asgList) == 0 {
+	if len(asgList) == 0 {
 		log.Fatal("Must supply at least one ASG in ROLLER_ASG environment variable")
 	}
 

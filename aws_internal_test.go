@@ -33,22 +33,22 @@ func testASGEq(a, b []*autoscaling.Group) bool {
 }
 
 var validLaunchTemplates = map[string]*ec2.LaunchTemplate{
-	"12345": &ec2.LaunchTemplate{
+	"12345": {
 		LaunchTemplateId:     aws.String("12345"),
 		LatestVersionNumber:  aws.Int64(65),
 		DefaultVersionNumber: aws.Int64(59),
 	},
-	"67890": &ec2.LaunchTemplate{
+	"67890": {
 		LaunchTemplateId:     aws.String("67890"),
 		LatestVersionNumber:  aws.Int64(10),
 		DefaultVersionNumber: aws.Int64(10),
 	},
-	"lt1": &ec2.LaunchTemplate{
+	"lt1": {
 		LaunchTemplateName:   aws.String("lt1"),
 		LatestVersionNumber:  aws.Int64(4),
 		DefaultVersionNumber: aws.Int64(1),
 	},
-	"lt2": &ec2.LaunchTemplate{
+	"lt2": {
 		LaunchTemplateName:   aws.String("lt2"),
 		LatestVersionNumber:  aws.Int64(40),
 		DefaultVersionNumber: aws.Int64(30),
@@ -88,7 +88,7 @@ func (m *mockEc2Svc) DescribeInstances(in *ec2.DescribeInstancesInput) (*ec2.Des
 	}
 	ret := &ec2.DescribeInstancesOutput{
 		Reservations: []*ec2.Reservation{
-			&ec2.Reservation{
+			{
 				Instances: instances,
 			},
 		},
@@ -251,7 +251,7 @@ func TestAwsDescribeGroups(t *testing.T) {
 			if n == nogroup {
 				continue
 			}
-			name := fmt.Sprintf("%s", n)
+			name := n
 			validGroups[n] = &autoscaling.Group{
 				AutoScalingGroupName: &name,
 			}
@@ -264,7 +264,7 @@ func TestAwsDescribeGroups(t *testing.T) {
 		if tt.err == nil {
 			expectedGroups = make([]*autoscaling.Group, 0)
 			for _, n := range tt.names {
-				name := fmt.Sprintf("%s", n)
+				name := n
 				expectedGroups = append(expectedGroups, &autoscaling.Group{
 					AutoScalingGroupName: &name,
 				})

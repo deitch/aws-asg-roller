@@ -50,6 +50,9 @@ ifneq ($(BUILD),local)
 GO = docker run --rm $(BUILDERTAG)
 endif
 
+GOBIN ?= $(shell go env GOPATH)/bin
+LINTER ?= $(GOBIN)/golangci-lint
+
 GO_FILES := $(shell find . -type f -name '*.go')
 
 .PHONY: all tag build image push test-start test-run test-run-interactive test-stop test build-test vendor
@@ -103,11 +106,10 @@ fmt-check: builder
 		exit 1; \
 	fi
 
-gometalinter:
+golangci-lint: $(LINTER)
+$(LINTER):
 ifeq ($(BUILD),local)
-ifeq (, $(shell which gometalinter))
-	$(GO) go get -u github.com/alecthomas/gometalinter
-endif
+	$(GO) go get github.com/golangci/golangci-lint/cmd/golangci-lint@v1.17.1
 endif
 
 golint:
@@ -118,8 +120,8 @@ endif
 endif
 
 ## Lint files
-lint: golint gometalinter builder
-	$(GO) gometalinter --disable-all --enable=golint  --vendor ./...
+lint: golint golangci-lint builder
+	$(GO) $(LINTER) run -E golint -E gofmt ./...
 
 ## Run unit tests
 test: builder

@@ -294,8 +294,5 @@ func compareLaunchTemplateVersions(targetTemplate *ec2.LaunchTemplate, lt1, lt2 
 	default:
 		lt2version = *lt2.Version
 	}
-	if lt1version != lt2version {
-		return false
-	}
-	return true
+	return lt1version == lt2version
 }

@@ -49,14 +49,14 @@ func (f *funcCounter) add(name string, params ...interface{}) {
 		params: params,
 	})
 }
-func (f *funcCounter) last() (string, []interface{}) {
+func (f *funcCounter) last() (string, []interface{}) { //nolint:unused
 	l := len(f.count)
 	if l > 0 {
 		return f.count[l-1].name, f.count[l-1].params
 	}
 	return "", nil
 }
-func (f *funcCounter) lastByName(name string) []interface{} {
+func (f *funcCounter) lastByName(name string) []interface{} { //nolint:unused
 	var params []interface{}
 	for _, call := range f.count {
 		if call.name == name {

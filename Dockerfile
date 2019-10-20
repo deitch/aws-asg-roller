@@ -6,7 +6,7 @@ ARG REPO
 
 RUN apk add -U --no-cache git ca-certificates
 
-RUN GO111MODULE=off go get -u golang.org/x/lint/golint && GO111MODULE=off go get -u github.com/alecthomas/gometalinter
+RUN GO111MODULE=off go get -u golang.org/x/lint/golint
 
 ENV GO111MODULE=on 
 ENV CGO_ENABLED=0
