@@ -209,8 +209,22 @@ ASG Roller takes its configuration via environment variables. All environment va
 * `ROLLER_ASG`: comma-separated list of auto-scaling groups that should be managed.
 * `ROLLER_KUBERNETES`: If set to `true`, will check if a new node is ready via-a-vis Kubernetes before declaring it "ready", and will drain an old node before eliminating it. Defaults to `true` when running in Kubernetes as a pod, `false` otherwise.
 * `ROLLER_IGNORE_DAEMONSETS`: If set to `false`, will not reclaim a node until there are no DaemonSets running on the node; if set to `true` (default), will reclaim node when all regular pods are drained off, but will ignore the presence of DaemonSets, which should be present on every node anyways. Normally, you want this set to `true`, which is the default.
+* `ROLLER_DELETE_LOCAL_DATA`: If set to `false` (default), will not reclaim a node until there are no pods with [emptyDir](https://kubernetes.io/docs/concepts/storage/volumes/#emptydir) running on the node; if set to `true`, will continue to terminate the pod and delete the local data before reclaiming the node. The default is `false` to maintain backward compatibility. 
 * `ROLLER_CHECK_DELAY`: Time, in seconds, between checks of ASG status.
 * `KUBECONFIG`: Path to kubernetes config file for authenticating to the kubernetes cluster. Required only if `ROLLER_KUBERNETES` is `true` and we are not operating in a kubernetes cluster.
+
+## Interaction with cluster-autoscaler
+
+[cluster-autoscaler](https://github.com/kubernetes/autoscaler/tree/master/cluster-autoscaler) is a tool that commonly used to automatically adjusts the size of the Kubernetes cluster. However, there might be some conflicts (see [#19](https://github.com/deitch/aws-asg-roller/issues/19) for more details) between cluster-autoscaler and aws-asg-roller when they are both trying to schedule the asg. A workaround was implemented in aws-asg-roller by annotating all the managed nodes with `cluster-autoscaler.kubernetes.io/scale-down-disabled` when rolling-update is required. 
+
+The general flow can be summarized as follow:
+* Check if any nodes in the asg needs to be updated.
+* If there are nodes that needs to be updated, annotate all up-to-date or new nodes with `cluster-autoscaler.kubernetes.io/scale-down-disabled` 
+  * Update asg to spin up a new node before draining any old nodes.
+  * Sleep and repeat (i.e. annotate new unutilized node to prevent it from being scaled-down).
+* If all nodes are up-to-date, remove `cluster-autoscaler.kubernetes.io/scale-down-disabled` if any from all the nodes - i.e. normal cluster-autoscaler management resumes.
+
+> NOTE: `cluster-autoscaler.kubernetes.io/scale-down-disabled` is only supported for cluster-autoscaler v1.0.0 and above.
 
 ## Template or Configuration
 

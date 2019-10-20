@@ -21,7 +21,7 @@ func main() {
 
 	// get config env
 	ignoreDaemonSets := os.Getenv("ROLLER_IGNORE_DAEMONSETS") != "false"
-	deleteLocalData := os.Getenv("ROLLER_DELETE_LOCAL_DATA") != "false"
+	deleteLocalData := strings.ToLower(os.Getenv("ROLLER_DELETE_LOCAL_DATA")) == "true"
 	// get a kube connection
 	readinessHandler, err := kubeGetReadinessHandler(ignoreDaemonSets, deleteLocalData)
 	if err != nil {

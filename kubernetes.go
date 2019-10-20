@@ -14,6 +14,8 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 )
 
+const clusterAutoscalerScaleDownDisabledFlag := "cluster-autoscaler.kubernetes.io/scale-down-disabled"
+
 type kubernetesReadiness struct {
 	clientset        *kubernetes.Clientset
 	ignoreDaemonSets bool
@@ -149,7 +151,7 @@ func setScaleDownDisabledAnnotation(hostnames []string) ([]string, error) {
 		node      *corev1.Node
 		hostname  string
 		err       error
-		key       = "cluster-autoscaler.kubernetes.io/scale-down-disabled"
+		key       = clusterAutoscalerScaleDownDisabledFlag
 		annotated = []string{}
 	)
 	clientset, err := kubeGetClientset()
@@ -181,7 +183,7 @@ func removeScaleDownDisabledAnnotation(hostnames []string) error {
 		node     *corev1.Node
 		hostname string
 		err      error
-		key      = "cluster-autoscaler.kubernetes.io/scale-down-disabled"
+		key      = clusterAutoscalerScaleDownDisabledFlag
 	)
 	clientset, err := kubeGetClientset()
 	if err != nil {
