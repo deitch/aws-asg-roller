@@ -103,8 +103,7 @@ func kubeGetClientset() (*kubernetes.Clientset, error) {
 	return clientset, nil
 }
 func getKubeOutOfCluster() (*rest.Config, error) {
-	var kubeconfig string
-	kubeconfig = os.Getenv("KUBECONFIG")
+	kubeconfig := os.Getenv("KUBECONFIG")
 	if kubeconfig == "" {
 		if home := homeDir(); home != "" {
 			kubeconfig = filepath.Join(home, ".kube", "config")

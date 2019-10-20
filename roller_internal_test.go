@@ -105,7 +105,7 @@ func TestCalculateAdjustment(t *testing.T) {
 		statusHealthy := "Healthy"
 		statusUnhealthy := "Down"
 		for _, instance := range tt.oldInstances {
-			id := fmt.Sprintf("%s", instance)
+			id := instance
 			instances = append(instances, &autoscaling.Instance{
 				InstanceId:              &id,
 				LaunchConfigurationName: &lcNameOld,
@@ -114,7 +114,7 @@ func TestCalculateAdjustment(t *testing.T) {
 		}
 		lcNameNew := lcName
 		for _, instance := range tt.newInstancesHealthy {
-			id := fmt.Sprintf("%s", instance)
+			id := instance
 			instances = append(instances, &autoscaling.Instance{
 				InstanceId:              &id,
 				LaunchConfigurationName: &lcNameNew,
@@ -122,7 +122,7 @@ func TestCalculateAdjustment(t *testing.T) {
 			})
 		}
 		for _, instance := range tt.newInstancesUnhealthy {
-			id := fmt.Sprintf("%s", instance)
+			id := instance
 			instances = append(instances, &autoscaling.Instance{
 				InstanceId:              &id,
 				LaunchConfigurationName: &lcNameNew,
@@ -175,12 +175,12 @@ func TestAdjust(t *testing.T) {
 			nil,
 			nil,
 			map[string][]string{
-				"myasg":      []string{"1"},
-				"anotherasg": []string{},
+				"myasg":      {"1"},
+				"anotherasg": {},
 			},
 			map[string][]string{
-				"myasg":      []string{"2", "3"},
-				"anotherasg": []string{"8", "9", "10"},
+				"myasg":      {"2", "3"},
+				"anotherasg": {"8", "9", "10"},
 			},
 			map[string]int64{"myasg": 2, "anotherasg": 10},
 			map[string]int64{"myasg": 2, "anotherasg": 10},
@@ -195,12 +195,12 @@ func TestAdjust(t *testing.T) {
 			nil,
 			nil,
 			map[string][]string{
-				"myasg":      []string{"1"},
-				"anotherasg": []string{},
+				"myasg":      {"1"},
+				"anotherasg": {},
 			},
 			map[string][]string{
-				"myasg":      []string{"2", "3"},
-				"anotherasg": []string{"8", "9", "10"},
+				"myasg":      {"2", "3"},
+				"anotherasg": {"8", "9", "10"},
 			},
 			map[string]int64{"myasg": 2},
 			map[string]int64{},
@@ -215,14 +215,14 @@ func TestAdjust(t *testing.T) {
 		t.Run(tt.desc, func(t *testing.T) {
 			validGroups := map[string]*autoscaling.Group{}
 			for _, n := range tt.asgs {
-				name := fmt.Sprintf("%s", n)
+				name := n
 				lcName := "lconfig"
 				oldLcName := fmt.Sprintf("old%s", lcName)
-				myHealthy := fmt.Sprintf("%s", healthy)
+				myHealthy := healthy
 				desired := tt.asgOriginalDesired[name]
 				instances := make([]*autoscaling.Instance, 0)
 				for _, id := range tt.oldIds[name] {
-					idd := fmt.Sprintf("%s", id)
+					idd := id
 					instances = append(instances, &autoscaling.Instance{
 						InstanceId:              &idd,
 						LaunchConfigurationName: &oldLcName,
@@ -230,7 +230,7 @@ func TestAdjust(t *testing.T) {
 					})
 				}
 				for _, id := range tt.newIds[name] {
-					idd := fmt.Sprintf("%s", id)
+					idd := id
 					instances = append(instances, &autoscaling.Instance{
 						InstanceId:              &idd,
 						LaunchConfigurationName: &lcName,
@@ -254,12 +254,12 @@ func TestAdjust(t *testing.T) {
 			// convert maps from map[string] to map[*string]
 			originalDesiredPtr := map[*string]int64{}
 			for k, v := range tt.originalDesired {
-				ks := fmt.Sprintf("%s", k)
+				ks := k
 				originalDesiredPtr[&ks] = v
 			}
 			newDesiredPtr := map[*string]int64{}
 			for k, v := range tt.newDesired {
-				ks := fmt.Sprintf("%s", k)
+				ks := k
 				newDesiredPtr[&ks] = v
 			}
 			err := adjust(tt.asgs, ec2Svc, asgSvc, tt.handler, tt.originalDesired)
@@ -346,17 +346,17 @@ func TestGroupInstances(t *testing.T) {
 		for i, tt := range tests {
 			instances := make([]*autoscaling.Instance, 0)
 			lcName := "lcname"
-			lcNameNew := fmt.Sprintf("%s", lcName)
+			lcNameNew := lcName
 			lcNameOld := fmt.Sprintf("old-%s", lcName)
 			for _, instance := range tt.oldIds {
-				id := fmt.Sprintf("%s", instance)
+				id := instance
 				instances = append(instances, &autoscaling.Instance{
 					InstanceId:              &id,
 					LaunchConfigurationName: &lcNameOld,
 				})
 			}
 			for _, instance := range tt.newIds {
-				id := fmt.Sprintf("%s", instance)
+				id := instance
 				instances = append(instances, &autoscaling.Instance{
 					InstanceId:              &id,
 					LaunchConfigurationName: &lcNameNew,
@@ -374,17 +374,17 @@ func TestGroupInstances(t *testing.T) {
 		for i, tt := range tests {
 			instances := make([]*autoscaling.Instance, 0)
 			ltName := "lt1"
-			ltNameNew := fmt.Sprintf("%s", ltName)
+			ltNameNew := ltName
 			ltNameOld := fmt.Sprintf("old-%s", ltName)
 			for _, instance := range tt.oldIds {
-				id := fmt.Sprintf("%s", instance)
+				id := instance
 				instances = append(instances, &autoscaling.Instance{
 					InstanceId:     &id,
 					LaunchTemplate: &autoscaling.LaunchTemplateSpecification{LaunchTemplateName: &ltNameOld},
 				})
 			}
 			for _, instance := range tt.newIds {
-				id := fmt.Sprintf("%s", instance)
+				id := instance
 				instances = append(instances, &autoscaling.Instance{
 					InstanceId:     &id,
 					LaunchTemplate: &autoscaling.LaunchTemplateSpecification{LaunchTemplateName: &ltNameNew},
@@ -404,7 +404,7 @@ func TestMapInstanceIds(t *testing.T) {
 	ids := []string{"1", "2", "10"}
 	instances := make([]*autoscaling.Instance, 0)
 	for _, i := range ids {
-		id := fmt.Sprintf("%s", i)
+		id := i
 		instances = append(instances, &autoscaling.Instance{
 			InstanceId: &id,
 		})
