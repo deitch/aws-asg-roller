@@ -14,7 +14,7 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 )
 
-const clusterAutoscalerScaleDownDisabledFlag := "cluster-autoscaler.kubernetes.io/scale-down-disabled"
+const clusterAutoscalerScaleDownDisabledFlag = "cluster-autoscaler.kubernetes.io/scale-down-disabled"
 
 type kubernetesReadiness struct {
 	clientset        *kubernetes.Clientset
