@@ -171,7 +171,10 @@ func setScaleDownDisabledAnnotation(hostnames []string) ([]string, error) {
 		if value := annotations[key]; value != "true" {
 			annotations[key] = "true"
 			node.SetAnnotations(annotations)
-			nodes.Update(node)
+			_, err := nodes.Update(node)
+			if err != nil {
+				return annotated, err
+			}
 			annotated = append(annotated, h)
 		}
 	}
@@ -202,7 +205,10 @@ func removeScaleDownDisabledAnnotation(hostnames []string) error {
 		if _, ok := annotations[key]; ok {
 			delete(annotations, key)
 			node.SetAnnotations(annotations)
-			nodes.Update(node)
+			_, err := nodes.Update(node)
+			if err != nil {
+				return err
+			}
 		}
 	}
 	return nil
