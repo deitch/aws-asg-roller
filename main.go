@@ -21,8 +21,9 @@ func main() {
 
 	// get config env
 	ignoreDaemonSets := os.Getenv("ROLLER_IGNORE_DAEMONSETS") != "false"
+	deleteLocalData := strings.ToLower(os.Getenv("ROLLER_DELETE_LOCAL_DATA")) == "true"
 	// get a kube connection
-	readinessHandler, err := kubeGetReadinessHandler(ignoreDaemonSets)
+	readinessHandler, err := kubeGetReadinessHandler(ignoreDaemonSets, deleteLocalData)
 	if err != nil {
 		log.Fatalf("Error getting kubernetes readiness handler when required: %v", err)
 	}
@@ -43,7 +44,7 @@ func main() {
 
 	// infinite loop
 	for {
-		err = adjust(asgList, ec2Svc, asgSvc, readinessHandler, originalDesired)
+		err := adjust(asgList, ec2Svc, asgSvc, readinessHandler, originalDesired)
 		if err != nil {
 			log.Printf("Error adjusting AutoScaling Groups: %v", err)
 		}
