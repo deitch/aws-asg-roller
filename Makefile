@@ -87,10 +87,10 @@ else
 	$(GO) go build -v -i -o $(BINARY)
 endif
 
-image:
+image: gitstat
 	docker build -t $(IMGTAG) --build-arg OS=$(OS) --build-arg ARCH=$(ARCH) --build-arg REPO=$(PACKAGE_NAME) --build-arg GOVER=$(GOVER) .
 
-push: image
+push: gitstat image
 	docker push $(IMGTAG)
 
 ci: gitstat tag build fmt-check lint test vet image
