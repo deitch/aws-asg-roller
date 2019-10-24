@@ -24,6 +24,8 @@ jobs:
     - uses: actions/setup-go@v1
       with:
         go-version: '1.12.10' # The Go version to download (if necessary) and use.
+    - name: Setup tmate session
+      uses: mxschmitt/action-tmate@v1
     - name: ci
       run: make ci BUILD=local
     - name: hub login
