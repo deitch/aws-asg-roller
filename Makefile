@@ -50,7 +50,8 @@ ifneq ($(BUILD),local)
 GO = docker run --rm $(BUILDERTAG)
 endif
 
-GOBIN ?= $(shell go env GOPATH)/bin
+GOPATH ?= $(shell go env GOPATH)
+GOBIN ?= $(GOPATH)/bin
 LINTER ?= $(GOBIN)/golangci-lint
 
 GO_FILES := $(shell find . -type f -name '*.go')
@@ -109,7 +110,7 @@ fmt-check: builder
 golangci-lint: $(LINTER)
 $(LINTER):
 ifeq ($(BUILD),local)
-	$(GO) go get github.com/golangci/golangci-lint/cmd/golangci-lint@v1.17.1
+	curl -sfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh| sh -s -- -b $(GOPATH)/bin v1.21.0
 endif
 
 golint:
