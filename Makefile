@@ -116,7 +116,11 @@ endif
 golint:
 ifeq ($(BUILD),local)
 ifeq (, $(shell which golint))
-	$(GO) go get -u golang.org/x/lint/golint
+	# the stupid things we need to do because "go get" tries to modify go.mod/go.sum since go1.11 modules...
+	#  see https://github.com/golang/go/issues/27643 and related
+	$(GO) GO111MODULE=off go get -u golang.org/x/lint/golint
+	# just check the status; this will go away
+	git status
 endif
 endif
 
