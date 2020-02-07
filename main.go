@@ -13,6 +13,10 @@ const (
 	asgCheckDelay = 30 // Default delay between checks of ASG status in seconds
 )
 
+var (
+	verbose = os.Getenv("ROLLER_VERBOSE") == "true"
+)
+
 func main() {
 	asgList := strings.Split(os.Getenv("ROLLER_ASG"), ",")
 	if len(asgList) == 0 {

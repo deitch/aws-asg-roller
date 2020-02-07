@@ -255,16 +255,28 @@ func groupInstances(asg *autoscaling.Group, ec2Svc ec2iface.EC2API) ([]*autoscal
 		for _, i := range asg.Instances {
 			switch {
 			case i.LaunchTemplate == nil:
+				if verbose {
+					log.Printf("Adding %s to list of old instances because it does not have a launch template", *i.InstanceId)
+				}
 				// has no launch template at all
 				oldInstances = append(oldInstances, i)
 			case aws.StringValue(i.LaunchTemplate.LaunchTemplateName) != aws.StringValue(targetLt.LaunchTemplateName):
-				// mismatched named
+				// mismatched name
+				if verbose {
+					log.Printf("Adding %s to list of old instances because its name is %s and the target template's name is %s", *i.InstanceId, *i.LaunchTemplate.LaunchTemplateName, *targetLt.LaunchTemplateName)
+				}
 				oldInstances = append(oldInstances, i)
 			case aws.StringValue(i.LaunchTemplate.LaunchTemplateId) != aws.StringValue(targetLt.LaunchTemplateId):
 				// mismatched ID
+				if verbose {
+					log.Printf("Adding %s to list of old instances because its template id is %s and the target template's id is %s", *i.InstanceId, *i.LaunchTemplate.LaunchTemplateId, *targetLt.LaunchTemplateId)
+				}
 				oldInstances = append(oldInstances, i)
 			// name and id match, just need to check versions
 			case !compareLaunchTemplateVersions(targetTemplate, targetLt, i.LaunchTemplate):
+				if verbose {
+					log.Printf("Adding %s to list of old instances because the launch template versions do not match (%s!=%s)", *i.InstanceId, *i.LaunchTemplate.Version, *targetLt.Version)
+				}
 				oldInstances = append(oldInstances, i)
 			default:
 				newInstances = append(newInstances, i)
