@@ -2,13 +2,12 @@ package main
 
 import (
 	"fmt"
-	"log"
-
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/autoscaling"
 	"github.com/aws/aws-sdk-go/service/autoscaling/autoscalingiface"
 	"github.com/aws/aws-sdk-go/service/ec2"
 	"github.com/aws/aws-sdk-go/service/ec2/ec2iface"
+	"log"
 )
 
 const (
@@ -26,12 +25,12 @@ func adjust(asgList []string, ec2Svc ec2iface.EC2API, asgSvc autoscalingiface.Au
 	// get information on all of the ec2 instances
 	instances := make([]*autoscaling.Instance, 0)
 	for _, asg := range asgs {
-		oldI, newI, err := groupInstances(asg, ec2Svc)
+		oldInstances, newInstances, err := groupInstances(asg, ec2Svc)
 		if err != nil {
 			return fmt.Errorf("unable to group instances into new and old: %v", err)
 		}
 		// if there are no outdated instances skip updating
-		if len(oldI) == 0 {
+		if len(oldInstances) == 0 {
 			log.Printf("[%s] ok\n", *asg.AutoScalingGroupName)
 			err := ensureNoScaleDownDisabledAnnotation(ec2Svc, mapInstancesIds(asg.Instances))
 			if err != nil {
@@ -40,11 +39,11 @@ func adjust(asgList []string, ec2Svc ec2iface.EC2API, asgSvc autoscalingiface.Au
 			continue
 		}
 
-		log.Printf("[%s] need updates: %d\n", *asg.AutoScalingGroupName, len(oldI))
+		log.Printf("[%s] need updates: %d\n", *asg.AutoScalingGroupName, len(oldInstances))
 
 		asgMap[*asg.AutoScalingGroupName] = asg
-		instances = append(instances, oldI...)
-		instances = append(instances, newI...)
+		instances = append(instances, oldInstances...)
+		instances = append(instances, newInstances...)
 
 	}
 	// no instances no work needed
