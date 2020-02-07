@@ -2,3 +2,4 @@ bin/
 .gocache/
 .go/
 .idea
+vendor
