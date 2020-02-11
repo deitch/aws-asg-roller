@@ -76,6 +76,9 @@ func awsGetLaunchTemplate(svc ec2iface.EC2API, input *ec2.DescribeLaunchTemplate
 	return templatesOutput.LaunchTemplates[0], nil
 }
 func awsGetHostnames(svc ec2iface.EC2API, ids []string) ([]string, error) {
+	if len(ids) == 0 {
+		return []string{}, nil
+	}
 	ec2input := &ec2.DescribeInstancesInput{
 		InstanceIds: aws.StringSlice(ids),
 	}

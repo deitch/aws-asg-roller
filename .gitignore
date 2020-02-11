@@ -1,4 +1,4 @@
-vendor/
 bin/
 .gocache/
 .go/
+vendor

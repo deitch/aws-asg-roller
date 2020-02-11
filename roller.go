@@ -2,13 +2,12 @@ package main
 
 import (
 	"fmt"
-	"log"
-
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/autoscaling"
 	"github.com/aws/aws-sdk-go/service/autoscaling/autoscalingiface"
 	"github.com/aws/aws-sdk-go/service/ec2"
 	"github.com/aws/aws-sdk-go/service/ec2/ec2iface"
+	"log"
 )
 
 const (
@@ -26,12 +25,12 @@ func adjust(asgList []string, ec2Svc ec2iface.EC2API, asgSvc autoscalingiface.Au
 	// get information on all of the ec2 instances
 	instances := make([]*autoscaling.Instance, 0)
 	for _, asg := range asgs {
-		oldI, newI, err := groupInstances(asg, ec2Svc)
+		oldInstances, newInstances, err := groupInstances(asg, ec2Svc)
 		if err != nil {
 			return fmt.Errorf("unable to group instances into new and old: %v", err)
 		}
 		// if there are no outdated instances skip updating
-		if len(oldI) == 0 {
+		if len(oldInstances) == 0 {
 			log.Printf("[%s] ok\n", *asg.AutoScalingGroupName)
 			err := ensureNoScaleDownDisabledAnnotation(ec2Svc, mapInstancesIds(asg.Instances))
 			if err != nil {
@@ -40,11 +39,11 @@ func adjust(asgList []string, ec2Svc ec2iface.EC2API, asgSvc autoscalingiface.Au
 			continue
 		}
 
-		log.Printf("[%s] need updates: %d\n", *asg.AutoScalingGroupName, len(oldI))
+		log.Printf("[%s] need updates: %d\n", *asg.AutoScalingGroupName, len(oldInstances))
 
 		asgMap[*asg.AutoScalingGroupName] = asg
-		instances = append(instances, oldI...)
-		instances = append(instances, newI...)
+		instances = append(instances, oldInstances...)
+		instances = append(instances, newInstances...)
 
 	}
 	// no instances no work needed
@@ -256,16 +255,28 @@ func groupInstances(asg *autoscaling.Group, ec2Svc ec2iface.EC2API) ([]*autoscal
 		for _, i := range asg.Instances {
 			switch {
 			case i.LaunchTemplate == nil:
+				if verbose {
+					log.Printf("Adding %s to list of old instances because it does not have a launch template", *i.InstanceId)
+				}
 				// has no launch template at all
 				oldInstances = append(oldInstances, i)
 			case aws.StringValue(i.LaunchTemplate.LaunchTemplateName) != aws.StringValue(targetLt.LaunchTemplateName):
-				// mismatched named
+				// mismatched name
+				if verbose {
+					log.Printf("Adding %s to list of old instances because its name is %s and the target template's name is %s", *i.InstanceId, *i.LaunchTemplate.LaunchTemplateName, *targetLt.LaunchTemplateName)
+				}
 				oldInstances = append(oldInstances, i)
 			case aws.StringValue(i.LaunchTemplate.LaunchTemplateId) != aws.StringValue(targetLt.LaunchTemplateId):
 				// mismatched ID
+				if verbose {
+					log.Printf("Adding %s to list of old instances because its template id is %s and the target template's id is %s", *i.InstanceId, *i.LaunchTemplate.LaunchTemplateId, *targetLt.LaunchTemplateId)
+				}
 				oldInstances = append(oldInstances, i)
 			// name and id match, just need to check versions
 			case !compareLaunchTemplateVersions(targetTemplate, targetLt, i.LaunchTemplate):
+				if verbose {
+					log.Printf("Adding %s to list of old instances because the launch template versions do not match (%s!=%s)", *i.InstanceId, *i.LaunchTemplate.Version, *targetLt.Version)
+				}
 				oldInstances = append(oldInstances, i)
 			default:
 				newInstances = append(newInstances, i)
