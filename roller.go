@@ -251,6 +251,9 @@ func groupInstances(asg *autoscaling.Group, ec2Svc ec2iface.EC2API) ([]*autoscal
 		if targetTemplate == nil {
 			return nil, nil, fmt.Errorf("no template found")
 		}
+		if verbose {
+			log.Printf("Grouping instances for ASG named %s with target template name %s, id %s, latest version %d and default version %d", *asg.AutoScalingGroupName, *targetTemplate.LaunchTemplateName, *targetTemplate.LaunchTemplateId, *targetTemplate.LatestVersionNumber, *targetTemplate.DefaultVersionNumber)
+		}
 		// now we can loop through each node and compare
 		for _, i := range asg.Instances {
 			switch {
@@ -279,6 +282,9 @@ func groupInstances(asg *autoscaling.Group, ec2Svc ec2iface.EC2API) ([]*autoscal
 				}
 				oldInstances = append(oldInstances, i)
 			default:
+				if verbose {
+					log.Printf("Adding %s to list of new instances because the instance matches the launch template with id %s", *i.InstanceId, *targetLt.LaunchTemplateId)
+				}
 				newInstances = append(newInstances, i)
 			}
 		}
@@ -288,6 +294,9 @@ func groupInstances(asg *autoscaling.Group, ec2Svc ec2iface.EC2API) ([]*autoscal
 			if i.LaunchConfigurationName != nil && *i.LaunchConfigurationName == *targetLc {
 				newInstances = append(newInstances, i)
 			} else {
+				if verbose {
+					log.Printf("Adding %s to list of old instances because the launch configuration names do not match (%s!=%s)", *i.InstanceId, *i.LaunchConfigurationName, *targetLc)
+				}
 				oldInstances = append(oldInstances, i)
 			}
 		}
