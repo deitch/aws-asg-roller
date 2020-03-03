@@ -294,6 +294,9 @@ func groupInstances(asg *autoscaling.Group, ec2Svc ec2iface.EC2API) ([]*autoscal
 			if i.LaunchConfigurationName != nil && *i.LaunchConfigurationName == *targetLc {
 				newInstances = append(newInstances, i)
 			} else {
+				if verbose {
+					log.Printf("Adding %s to list of old instances because the launch configuration names do not match (%s!=%s)", *i.InstanceId, *i.LaunchConfigurationName, *targetLc)
+				}
 				oldInstances = append(oldInstances, i)
 			}
 		}
