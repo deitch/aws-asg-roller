@@ -288,7 +288,7 @@ func groupInstances(asg *autoscaling.Group, ec2Svc ec2iface.EC2API) ([]*autoscal
 				newInstances = append(newInstances, i)
 			}
 		}
-	} else {
+	} else if targetLc != nil {
 		// go through each instance and find those that are not with the target LC
 		for _, i := range asg.Instances {
 			if i.LaunchConfigurationName != nil && *i.LaunchConfigurationName == *targetLc {
@@ -300,6 +300,8 @@ func groupInstances(asg *autoscaling.Group, ec2Svc ec2iface.EC2API) ([]*autoscal
 				oldInstances = append(oldInstances, i)
 			}
 		}
+	} else {
+		return nil, nil, fmt.Errorf("both target launch configuration and launch template are nil")
 	}
 	return oldInstances, newInstances, nil
 }
