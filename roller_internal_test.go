@@ -399,6 +399,39 @@ func TestGroupInstances(t *testing.T) {
 			runTest(t, asg, i, tt.oldIds, tt.newIds)
 		}
 	})
+	t.Run("launchtemplatemixedinstances", func(t *testing.T) {
+		for i, tt := range tests {
+			instances := make([]*autoscaling.Instance, 0)
+			ltName := "lt1"
+			ltNameNew := ltName
+			ltNameOld := fmt.Sprintf("old-%s", ltName)
+			for _, instance := range tt.oldIds {
+				id := instance
+				instances = append(instances, &autoscaling.Instance{
+					InstanceId:     &id,
+					LaunchTemplate: &autoscaling.LaunchTemplateSpecification{LaunchTemplateName: &ltNameOld},
+				})
+			}
+			for _, instance := range tt.newIds {
+				id := instance
+				instances = append(instances, &autoscaling.Instance{
+					InstanceId:     &id,
+					LaunchTemplate: &autoscaling.LaunchTemplateSpecification{LaunchTemplateName: &ltNameNew},
+				})
+			}
+			// construct the Group we will pass
+			asg := &autoscaling.Group{
+				MixedInstancesPolicy: &autoscaling.MixedInstancesPolicy{
+					LaunchTemplate: &autoscaling.LaunchTemplate{
+						LaunchTemplateSpecification: &autoscaling.LaunchTemplateSpecification{LaunchTemplateName: &ltName},
+					},
+				},
+				Instances: instances,
+			}
+			runTest(t, asg, i, tt.oldIds, tt.newIds)
+		}
+	})
+
 }
 
 func TestMapInstanceIds(t *testing.T) {
