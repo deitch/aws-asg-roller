@@ -79,8 +79,20 @@ AWS ASG Roller requires IAM rights to:
 * Terminate ASG nodes
 
 These permissions are as follows:
-
 ```
+- Effect: Allow
+  Action:
+  - "autoscaling:DescribeAutoScalingGroups"
+  - "autoscaling:DescribeAutoScalingInstances"
+  - "autoscaling:SetDesiredCapacity"
+  - "autoscaling:TerminateInstanceInAutoScalingGroup"
+  - "autoscaling:UpdateAutoScalingGroup"
+  - "autoscaling:DescribeTags"
+  - "autoscaling:DescribeLaunchConfigurations"
+  - "ec2:DescribeLaunchTemplates"
+  - "ec2:DescribeInstances"
+  Resource: "*"
+
 ```
 
 These permissions can be set either via runninn ASG Roller on an AWS node that has the correct role, or via API keys to a user that has the correct roles/permissions.
