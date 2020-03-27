@@ -2,12 +2,13 @@ package main
 
 import (
 	"fmt"
+	"log"
+
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/autoscaling"
 	"github.com/aws/aws-sdk-go/service/autoscaling/autoscalingiface"
 	"github.com/aws/aws-sdk-go/service/ec2"
 	"github.com/aws/aws-sdk-go/service/ec2/ec2iface"
-	"log"
 )
 
 const (
@@ -225,6 +226,9 @@ func groupInstances(asg *autoscaling.Group, ec2Svc ec2iface.EC2API) ([]*autoscal
 	// we want to be able to handle LaunchTemplate as well
 	targetLc := asg.LaunchConfigurationName
 	targetLt := asg.LaunchTemplate
+	if targetLt == nil && asg.MixedInstancesPolicy != nil && asg.MixedInstancesPolicy.LaunchTemplate != nil {
+		targetLt = asg.MixedInstancesPolicy.LaunchTemplate.LaunchTemplateSpecification
+	}
 	// prioritize LaunchTemplate over LaunchConfiguration
 	if targetLt != nil {
 		// we are using LaunchTemplate. Unlike LaunchConfiguration, you can have two nodes in the ASG
