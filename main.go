@@ -14,7 +14,8 @@ const (
 )
 
 var (
-	verbose = os.Getenv("ROLLER_VERBOSE") == "true"
+	verbose        = os.Getenv("ROLLER_VERBOSE") == "true"
+	canIncreaseMax = os.Getenv("ROLLER_CAN_INCREASE_MAX") == "true"
 )
 
 func main() {
