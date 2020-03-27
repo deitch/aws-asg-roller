@@ -139,7 +139,7 @@ func TestCalculateAdjustment(t *testing.T) {
 		ec2Svc := &mockEc2Svc{
 			autodescribe: true,
 		}
-		desired, originalDesired, terminate, err := calculateAdjustment(asg, ec2Svc, hostnameMap, tt.readiness, tt.originalDesired)
+		desired, terminate, err := calculateAdjustment(asg, ec2Svc, hostnameMap, tt.readiness, tt.originalDesired)
 		switch {
 		case (err == nil && tt.err != nil) || (err != nil && tt.err == nil) || (err != nil && tt.err != nil && !strings.HasPrefix(err.Error(), tt.err.Error())):
 			t.Errorf("%d: mismatched errors, actual then expected", i)
@@ -147,8 +147,6 @@ func TestCalculateAdjustment(t *testing.T) {
 			t.Logf("%v", tt.err)
 		case desired != tt.targetDesired:
 			t.Errorf("%d: Mismatched desired, actual %d expected %d", i, desired, tt.targetDesired)
-		case originalDesired != tt.targetOriginalDesired:
-			t.Errorf("%d: Mismatched original desired, actual %d expected %d", i, originalDesired, tt.targetOriginalDesired)
 		case terminate != tt.targetTerminate:
 			t.Errorf("%d: Mismatched terminate ID, actual %s expected %s", i, terminate, tt.targetTerminate)
 		}
