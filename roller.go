@@ -226,7 +226,11 @@ func groupInstances(asg *autoscaling.Group, ec2Svc ec2iface.EC2API) ([]*autoscal
 	// we want to be able to handle LaunchTemplate as well
 	targetLc := asg.LaunchConfigurationName
 	targetLt := asg.LaunchTemplate
+	// check for mixed instance policy
 	if targetLt == nil && asg.MixedInstancesPolicy != nil && asg.MixedInstancesPolicy.LaunchTemplate != nil {
+		if verbose {
+			log.Printf("[%s] using mixed instances policy launch template", *asg.AutoScalingGroupName)
+		}
 		targetLt = asg.MixedInstancesPolicy.LaunchTemplate.LaunchTemplateSpecification
 	}
 	// prioritize LaunchTemplate over LaunchConfiguration
