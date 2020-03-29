@@ -168,7 +168,9 @@ func TestAdjust(t *testing.T) {
 		newOriginalDesired      map[string]int64
 		newDesired              map[string]int64
 		expectedOriginalDesired map[string]int64
+		max                     map[string]int64
 		terminate               []string
+		canIncreaseMax          bool
 	}{
 		{
 			"2 asgs adjust in progress",
@@ -188,7 +190,9 @@ func TestAdjust(t *testing.T) {
 			map[string]int64{"myasg": 2, "anotherasg": 0},
 			map[string]int64{"myasg": 2},
 			map[string]int64{"myasg": 2, "anotherasg": 0},
+			map[string]int64{"myasg": 3, "anotherasg": 11},
 			[]string{"1"},
+			false,
 		},
 		{
 			"2 asgs adjust first run",
@@ -208,7 +212,75 @@ func TestAdjust(t *testing.T) {
 			map[string]int64{"myasg": 2},
 			map[string]int64{"myasg": 3},
 			map[string]int64{"myasg": 2},
+			map[string]int64{"myasg": 3},
 			[]string{},
+			false,
+		},
+		{
+			"2 asgs adjust complete",
+			[]string{"myasg", "anotherasg"},
+			nil,
+			nil,
+			map[string][]string{
+				"myasg":      {},
+				"anotherasg": {},
+			},
+			map[string][]string{
+				"myasg":      {"1", "2", "3"},
+				"anotherasg": {"8", "9", "10"},
+			},
+			map[string]int64{"myasg": 2},
+			map[string]int64{},
+			map[string]int64{"myasg": 2},
+			map[string]int64{},
+			map[string]int64{"myasg": 2},
+			map[string]int64{"myasg": 3},
+			[]string{},
+			false,
+		},
+		{
+			"2 asgs adjust increase max fail",
+			[]string{"myasg", "anotherasg"},
+			nil,
+			fmt.Errorf("Error setting desired to 3 for ASG myasg: unable to increase ASG myasg desired size to 3 as greater than max size 2"),
+			map[string][]string{
+				"myasg":      {"1"},
+				"anotherasg": {},
+			},
+			map[string][]string{
+				"myasg":      {"2", "3"},
+				"anotherasg": {"8", "9", "10"},
+			},
+			map[string]int64{"myasg": 2},
+			map[string]int64{},
+			map[string]int64{"myasg": 2},
+			map[string]int64{},
+			map[string]int64{"myasg": 2},
+			map[string]int64{"myasg": 2},
+			[]string{},
+			false,
+		},
+		{
+			"2 asgs adjust increase max succeed",
+			[]string{"myasg", "anotherasg"},
+			nil,
+			nil,
+			map[string][]string{
+				"myasg":      {"1"},
+				"anotherasg": {},
+			},
+			map[string][]string{
+				"myasg":      {"2", "3"},
+				"anotherasg": {"8", "9", "10"},
+			},
+			map[string]int64{"myasg": 2},
+			map[string]int64{},
+			map[string]int64{"myasg": 2},
+			map[string]int64{"myasg": 3},
+			map[string]int64{"myasg": 2},
+			map[string]int64{"myasg": 2},
+			[]string{},
+			true,
 		},
 	}
 
@@ -221,6 +293,7 @@ func TestAdjust(t *testing.T) {
 				oldLcName := fmt.Sprintf("old%s", lcName)
 				myHealthy := healthy
 				desired := tt.asgOriginalDesired[name]
+				max := tt.max[name]
 				instances := make([]*autoscaling.Instance, 0)
 				for _, id := range tt.oldIds[name] {
 					idd := id
@@ -244,6 +317,7 @@ func TestAdjust(t *testing.T) {
 					DesiredCapacity:         &desired,
 					Instances:               instances,
 					LaunchConfigurationName: &lcName,
+					MaxSize:                 &max,
 				}
 			}
 			asgSvc := &mockAsgSvc{
@@ -263,6 +337,7 @@ func TestAdjust(t *testing.T) {
 				ks := k
 				newDesiredPtr[&ks] = v
 			}
+			canIncreaseMax = tt.canIncreaseMax
 			err := adjust(tt.asgs, ec2Svc, asgSvc, tt.handler, tt.originalDesired)
 			// what were our last calls to each?
 			switch {
@@ -305,7 +380,13 @@ func TestAdjust(t *testing.T) {
 					t.Errorf("%d: Requested call to terminate instance %s, unexpected", i, *id)
 				}
 			}
-
+			// check for calls to update the group (e.g. to raise max)
+			updateGroupCalls := asgSvc.counter.filterByName("UpdateAutoScalingGroup")
+			for k, desired := range tt.newDesired {
+				if desired > tt.max[k] && len(updateGroupCalls) == 0 {
+					t.Errorf("%d: Expected call to UpdateAutoScalingGroup to set max but there was none", i)
+				}
+			}
 		})
 	}
 }

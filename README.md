@@ -223,6 +223,7 @@ ASG Roller takes its configuration via environment variables. All environment va
 * `ROLLER_IGNORE_DAEMONSETS`: If set to `false`, will not reclaim a node until there are no DaemonSets running on the node; if set to `true` (default), will reclaim node when all regular pods are drained off, but will ignore the presence of DaemonSets, which should be present on every node anyways. Normally, you want this set to `true`, which is the default.
 * `ROLLER_DELETE_LOCAL_DATA`: If set to `false` (default), will not reclaim a node until there are no pods with [emptyDir](https://kubernetes.io/docs/concepts/storage/volumes/#emptydir) running on the node; if set to `true`, will continue to terminate the pod and delete the local data before reclaiming the node. The default is `false` to maintain backward compatibility. 
 * `ROLLER_CHECK_DELAY`: Time, in seconds, between checks of ASG status.
+* `ROLLER_CAN_INCREASE_MAX`: If set to `true`, will increase the ASG maximum size to accommodate the increase in desired count. If set to `false`, will instead error when desired is higher than max.
 * `ROLLER_VERBOSE`: If set to `true`, will increase verbosity of logs.
 * `KUBECONFIG`: Path to kubernetes config file for authenticating to the kubernetes cluster. Required only if `ROLLER_KUBERNETES` is `true` and we are not operating in a kubernetes cluster.
 
