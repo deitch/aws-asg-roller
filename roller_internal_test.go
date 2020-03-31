@@ -423,6 +423,7 @@ func TestGroupInstances(t *testing.T) {
 		{[]string{"1", "2"}, []string{"3"}},
 		{[]string{"1", "2", "3"}, []string{}},
 		{[]string{}, []string{"1", "2", "3"}},
+		{[]string{}, []string{"1", "2", "$D"}},
 	}
 	t.Run("launchconfiguration", func(t *testing.T) {
 		for i, tt := range tests {
@@ -547,6 +548,12 @@ func TestCompareLaunchTemplateVersions(t *testing.T) {
 		{&autoscaling.LaunchTemplateSpecification{Version: aws.String("25")}, &autoscaling.LaunchTemplateSpecification{}, false},
 		{&autoscaling.LaunchTemplateSpecification{Version: aws.String("25")}, &autoscaling.LaunchTemplateSpecification{Version: aws.String("26")}, false},
 		{&autoscaling.LaunchTemplateSpecification{Version: aws.String("25")}, &autoscaling.LaunchTemplateSpecification{Version: aws.String("25")}, true},
+		{&autoscaling.LaunchTemplateSpecification{Version: aws.String("25")}, &autoscaling.LaunchTemplateSpecification{Version: aws.String("25")}, true},
+		{&autoscaling.LaunchTemplateSpecification{Version: aws.String("64")}, &autoscaling.LaunchTemplateSpecification{Version: aws.String("$Latest")}, true},
+		{&autoscaling.LaunchTemplateSpecification{Version: aws.String("25")}, &autoscaling.LaunchTemplateSpecification{Version: aws.String("$Default")}, true},
+		{&autoscaling.LaunchTemplateSpecification{Version: aws.String("$Default")}, &autoscaling.LaunchTemplateSpecification{Version: aws.String("$Default")}, true},
+		{&autoscaling.LaunchTemplateSpecification{Version: aws.String("$Latest")}, &autoscaling.LaunchTemplateSpecification{Version: aws.String("$Latest")}, true},
+		{&autoscaling.LaunchTemplateSpecification{Version: aws.String("$Default")}, &autoscaling.LaunchTemplateSpecification{Version: aws.String("$Latest")}, false},
 	}
 	for i, tt := range tests {
 		result := compareLaunchTemplateVersions(template, tt.lt1, tt.lt2)
