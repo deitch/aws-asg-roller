@@ -342,17 +342,17 @@ func compareLaunchTemplateVersions(targetTemplate *ec2.LaunchTemplate, lt1, lt2 
 	var lt1version, lt2version string
 	switch *lt1.Version {
 	case "$Default":
-		lt1version = fmt.Sprintf("%d", targetTemplate.DefaultVersionNumber)
+		lt1version = fmt.Sprintf("%d", *targetTemplate.DefaultVersionNumber)
 	case "$Latest":
-		lt1version = fmt.Sprintf("%d", targetTemplate.LatestVersionNumber)
+		lt1version = fmt.Sprintf("%d", *targetTemplate.LatestVersionNumber)
 	default:
 		lt1version = *lt1.Version
 	}
 	switch *lt2.Version {
 	case "$Default":
-		lt2version = fmt.Sprintf("%d", targetTemplate.DefaultVersionNumber)
+		lt2version = fmt.Sprintf("%d", *targetTemplate.DefaultVersionNumber)
 	case "$Latest":
-		lt2version = fmt.Sprintf("%d", targetTemplate.LatestVersionNumber)
+		lt2version = fmt.Sprintf("%d", *targetTemplate.LatestVersionNumber)
 	default:
 		lt2version = *lt2.Version
 	}
