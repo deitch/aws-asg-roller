@@ -42,6 +42,8 @@ The update methodology is simple:
 
 ASG Roller will check both launch configurations, comparing names of the launch configuration used, and launch templates, comparing ID or Name, and version.
 
+ASG Roller will store the original desired value of the ASG as a tag on the ASG, with the key `aws-asg-roller/OriginalDesired`. This helps maintain state in the situation where the process terminates.
+
 ## App Awareness
 In addition to the above, ASG Roller is able to insert app-specific logic at two distinct points:
 
@@ -89,16 +91,11 @@ These permissions are as follows:
   - "autoscaling:TerminateInstanceInAutoScalingGroup"
   - "autoscaling:UpdateAutoScalingGroup"
   - "autoscaling:DescribeTags"
+  - "autoscaling:CreateOrUpdateTags"
   - "autoscaling:DescribeLaunchConfigurations"
   - "ec2:DescribeLaunchTemplates"
   - "ec2:DescribeInstances"
   Resource: "*"
-```
-
-If the `ROLLER_ORIGINAL_DESIRED_ON_TAG` tag option is enabled, the following permission is also required:
-
-```
-autoscaling:CreateOrUpdateTags
 ```
 
 These permissions can be set either via running ASG Roller on an AWS node that has the correct role, or via API keys to a user that has the correct roles/permissions.
@@ -230,7 +227,6 @@ ASG Roller takes its configuration via environment variables. All environment va
 * `ROLLER_DELETE_LOCAL_DATA`: If set to `false` (default), will not reclaim a node until there are no pods with [emptyDir](https://kubernetes.io/docs/concepts/storage/volumes/#emptydir) running on the node; if set to `true`, will continue to terminate the pod and delete the local data before reclaiming the node. The default is `false` to maintain backward compatibility. 
 * `ROLLER_CHECK_DELAY`: Time, in seconds, between checks of ASG status.
 * `ROLLER_CAN_INCREASE_MAX`: If set to `true`, will increase the ASG maximum size to accommodate the increase in desired count. If set to `false`, will instead error when desired is higher than max.
-* `ROLLER_ORIGINAL_DESIRED_ON_TAG`: If set to `true`, will store the original desired value of the ASG as a tag on the ASG, with the key `aws-asg-roller/OriginalDesired`. This helps maintain state in the situation where the process terminates.
 * `ROLLER_VERBOSE`: If set to `true`, will increase verbosity of logs.
 * `KUBECONFIG`: Path to kubernetes config file for authenticating to the kubernetes cluster. Required only if `ROLLER_KUBERNETES` is `true` and we are not operating in a kubernetes cluster.
 

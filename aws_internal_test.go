@@ -153,6 +153,19 @@ func (m *mockAsgSvc) UpdateAutoScalingGroup(in *autoscaling.UpdateAutoScalingGro
 	ret := &autoscaling.UpdateAutoScalingGroupOutput{}
 	return ret, m.err
 }
+func (m *mockAsgSvc) DescribeTags(in *autoscaling.DescribeTagsInput) (*autoscaling.DescribeTagsOutput, error) {
+	m.counter.add("DescribeTags", in)
+	ret := &autoscaling.DescribeTagsOutput{
+		// value of "auto-scaling-group" tag is the ASG name
+		Tags: m.groups[*in.Filters[0].Values[0]].Tags,
+	}
+	return ret, m.err
+}
+func (m *mockAsgSvc) CreateOrUpdateTags(in *autoscaling.CreateOrUpdateTagsInput) (*autoscaling.CreateOrUpdateTagsOutput, error) {
+	m.counter.add("CreateOrUpdateTags", in)
+	ret := &autoscaling.CreateOrUpdateTagsOutput{}
+	return ret, m.err
+}
 
 func TestAwsGetHostnames(t *testing.T) {
 	tests := []struct {

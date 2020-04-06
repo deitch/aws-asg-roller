@@ -77,7 +77,9 @@ func adjust(asgList []string, ec2Svc ec2iface.EC2API, asgSvc autoscalingiface.Au
 			log.Printf("[%s] error calculating adjustment - skipping: %v\n", *asg.AutoScalingGroupName, err)
 			continue
 		}
-		newDesired[*asg.AutoScalingGroupName] = newDesiredA
+		if newDesiredA != *asg.DesiredCapacity {
+			newDesired[*asg.AutoScalingGroupName] = newDesiredA
+		}
 		if terminateID != "" {
 			log.Printf("[%s] scheduled termination: %s", *asg.AutoScalingGroupName, terminateID)
 			newTerminate[*asg.AutoScalingGroupName] = terminateID
@@ -130,13 +132,14 @@ func calculateAdjustment(asg *autoscaling.Group, ec2Svc ec2iface.EC2API, hostnam
 
 	// Possibilities:
 	// 1- we have some old ones, but have not started updates yet: set the desired, increment and loop
-	// 2- we have no old ones, but have started updates: we must be at end, so finish
+	// 2- we have no old ones: we must be at end or have no work to do, so finish
 	// 3- we have some old ones, but have started updates: run the updates
 	if len(oldInstances) == 0 {
-		if desired != originalDesired {
-			// we are done; return to desired to original value
-			return originalDesired, "", nil
+		// we are done
+		if verbose && desired != originalDesired {
+			log.Printf("[%s] returning desired to original value %d", *asg.AutoScalingGroupName, originalDesired)
 		}
+		return originalDesired, "", nil
 	}
 	if originalDesired == desired {
 		// we have not started updates; raise the desired count

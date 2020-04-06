@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"log"
-	"os"
 	"strconv"
 
 	"github.com/aws/aws-sdk-go/aws"
@@ -13,36 +12,28 @@ import (
 
 const asgTagNameOriginalDesired = "aws-asg-roller/OriginalDesired"
 
-var (
-	storeOriginalDesiredOnTag = os.Getenv("ROLLER_ORIGINAL_DESIRED_ON_TAG") == "true"
-)
-
 // Populates the original desired values for each ASG, based on the current 'desired' value if unkonwn.
 // The original desired value is recorded as a tag on the respective ASG. Subsequent runs attempt to
 // read the value of the tag to preserve state in the case of the process terminating.
 func populateOriginalDesired(originalDesired map[string]int64, asgs []*autoscaling.Group, asgSvc autoscalingiface.AutoScalingAPI) error {
 	for _, asg := range asgs {
 		asgName := *asg.AutoScalingGroupName
-		if storeOriginalDesiredOnTag {
-			tagOriginalDesired, err := getOriginalDesiredTag(asgSvc, asgName)
-			if err != nil {
-				return err
-			}
-			if tagOriginalDesired >= 0 {
-				originalDesired[asgName] = tagOriginalDesired
-				continue
-			}
+		tagOriginalDesired, err := getOriginalDesiredTag(asgSvc, asgName)
+		if err != nil {
+			return err
+		}
+		if tagOriginalDesired >= 0 {
+			originalDesired[asgName] = tagOriginalDesired
+			continue
 		}
 		// guess based on the current value
 		originalDesired[asgName] = *asg.DesiredCapacity
 		if verbose {
 			log.Printf("guessed desired value of %d from current desired on ASG: %s", *asg.DesiredCapacity, asgName)
 		}
-		if storeOriginalDesiredOnTag {
-			err := setOriginalDesiredTag(asgSvc, asgName, asg)
-			if err != nil {
-				return err
-			}
+		err = setOriginalDesiredTag(asgSvc, asgName, asg)
+		if err != nil {
+			return err
 		}
 	}
 	return nil

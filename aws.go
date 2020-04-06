@@ -23,7 +23,6 @@ func setAsgDesired(svc autoscalingiface.AutoScalingAPI, asg *autoscaling.Group, 
 			return fmt.Errorf("unable to increase ASG %s desired size to %d as greater than max size %d", *asg.AutoScalingGroupName, count, *asg.MaxSize)
 		}
 	}
-
 	if verbose {
 		log.Printf("increasing ASG %s desired count to %d", *asg.AutoScalingGroupName, count)
 	}

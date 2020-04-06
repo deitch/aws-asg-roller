@@ -1,21 +1,5 @@
 package main
 
-func testStringInt64MapEq(a, b map[string]int64) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	for k, v := range a {
-		vb, ok := b[k]
-		if !ok {
-			return false
-		}
-		if vb != v {
-			return false
-		}
-	}
-	return true
-}
-
 func testStringEq(a, b []string) bool {
 
 	// If one is nil, the other must also be nil.
