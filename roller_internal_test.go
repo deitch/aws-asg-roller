@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -39,7 +40,6 @@ func TestCalculateAdjustment(t *testing.T) {
 					- state of each new node
 			outputs
 			 - new desired number
-			 - new original desired number
 			 - node id to terminated (if any)
 			 - errors (if any)
 	*/
@@ -65,33 +65,32 @@ func TestCalculateAdjustment(t *testing.T) {
 		originalDesired       int64
 		readiness             readiness
 		targetDesired         int64
-		targetOriginalDesired int64
 		targetTerminate       string
 		err                   error
 	}{
 		// 1 old, 2 new healthy, 0 new unhealthy, should terminate old
-		{[]string{"1"}, []string{"2", "3"}, []string{}, 3, 2, nil, 3, 2, "1", nil},
+		{[]string{"1"}, []string{"2", "3"}, []string{}, 3, 2, nil, 3, "1", nil},
 		// 0 old, 2 new healthy, 0 new unhealthy, should indicate end of process
-		{[]string{}, []string{"2", "3"}, []string{}, 3, 2, nil, 2, 0, "", nil},
+		{[]string{}, []string{"2", "3"}, []string{}, 2, 2, nil, 2, "", nil},
 		// 2 old, 0 new healthy, 0 new unhealthy, should indicate start of process
-		{[]string{"1", "2"}, []string{}, []string{}, 2, 0, nil, 3, 2, "", nil},
+		{[]string{"1", "2"}, []string{}, []string{}, 2, 2, nil, 3, "", nil},
 		// 2 old, 0 new healthy, 0 new unhealthy, started, should not do anything until new healthy one
-		{[]string{"1", "2"}, []string{}, []string{}, 3, 2, nil, 3, 2, "", nil},
+		{[]string{"1", "2"}, []string{}, []string{}, 3, 2, nil, 3, "", nil},
 		// 2 old, 1 new healthy, 0 new unhealthy, remove an old one
-		{[]string{"1", "2"}, []string{"3"}, []string{}, 3, 2, nil, 3, 2, "1", nil},
+		{[]string{"1", "2"}, []string{"3"}, []string{}, 3, 2, nil, 3, "1", nil},
 		// 2 old, 0 new healthy, 1 new unhealthy, started, should not do anything until new one is healthy
-		{[]string{"1", "2"}, []string{}, []string{"3"}, 3, 2, nil, 3, 2, "", nil},
+		{[]string{"1", "2"}, []string{}, []string{"3"}, 3, 2, nil, 3, "", nil},
 
 		// 2 old, 1 new healthy, 0 new unhealthy, 1 new unready, should not change anything
-		{[]string{"1", "2"}, []string{"3"}, []string{}, 3, 2, unreadyCountHandler, 3, 2, "", nil},
+		{[]string{"1", "2"}, []string{"3"}, []string{}, 3, 2, unreadyCountHandler, 3, "", nil},
 		// 2 old, 1 new healthy, 0 new unhealthy, 0 new unready, 1 error: should not change anything
-		{[]string{"1", "2"}, []string{"3"}, []string{}, 3, 2, unreadyErrorHandler, 3, 2, "", fmt.Errorf("Error")},
+		{[]string{"1", "2"}, []string{"3"}, []string{}, 3, 2, unreadyErrorHandler, 3, "", fmt.Errorf("Error")},
 		// 2 old, 1 new healthy, 0 new unhealthy, 0 unready, remove an old one
-		{[]string{"1", "2"}, []string{"3"}, []string{}, 3, 2, readyHandler, 3, 2, "1", nil},
+		{[]string{"1", "2"}, []string{"3"}, []string{}, 3, 2, readyHandler, 3, "1", nil},
 		// 2 old, 1 new healthy, 0 new unhealthy, 0 new unready, 1 error: should not change anything
-		{[]string{"1", "2"}, []string{"3"}, []string{}, 3, 2, terminateErrorHandler, 3, 2, "", fmt.Errorf("Unexpected error")},
+		{[]string{"1", "2"}, []string{"3"}, []string{}, 3, 2, terminateErrorHandler, 3, "", fmt.Errorf("Unexpected error")},
 		// 2 old, 1 new healthy, 0 new unhealthy, 0 unready, successful terminate: remove an old one
-		{[]string{"1", "2"}, []string{"3"}, []string{}, 3, 2, terminateHandler, 3, 2, "1", nil},
+		{[]string{"1", "2"}, []string{"3"}, []string{}, 3, 2, terminateHandler, 3, "1", nil},
 	}
 	hostnameMap := map[string]string{}
 	for i := 0; i < 20; i++ {
@@ -139,7 +138,7 @@ func TestCalculateAdjustment(t *testing.T) {
 		ec2Svc := &mockEc2Svc{
 			autodescribe: true,
 		}
-		desired, originalDesired, terminate, err := calculateAdjustment(asg, ec2Svc, hostnameMap, tt.readiness, tt.originalDesired)
+		desired, terminate, err := calculateAdjustment(asg, ec2Svc, hostnameMap, tt.readiness, tt.originalDesired)
 		switch {
 		case (err == nil && tt.err != nil) || (err != nil && tt.err == nil) || (err != nil && tt.err != nil && !strings.HasPrefix(err.Error(), tt.err.Error())):
 			t.Errorf("%d: mismatched errors, actual then expected", i)
@@ -147,8 +146,6 @@ func TestCalculateAdjustment(t *testing.T) {
 			t.Logf("%v", tt.err)
 		case desired != tt.targetDesired:
 			t.Errorf("%d: Mismatched desired, actual %d expected %d", i, desired, tt.targetDesired)
-		case originalDesired != tt.targetOriginalDesired:
-			t.Errorf("%d: Mismatched original desired, actual %d expected %d", i, originalDesired, tt.targetOriginalDesired)
 		case terminate != tt.targetTerminate:
 			t.Errorf("%d: Mismatched terminate ID, actual %s expected %s", i, terminate, tt.targetTerminate)
 		}
@@ -157,21 +154,39 @@ func TestCalculateAdjustment(t *testing.T) {
 
 func TestAdjust(t *testing.T) {
 	tests := []struct {
-		desc                    string
-		asgs                    []string
-		handler                 readiness
-		err                     error
-		oldIds                  map[string][]string
-		newIds                  map[string][]string
-		asgOriginalDesired      map[string]int64
-		originalDesired         map[string]int64
-		newOriginalDesired      map[string]int64
-		newDesired              map[string]int64
-		expectedOriginalDesired map[string]int64
-		max                     map[string]int64
-		terminate               []string
-		canIncreaseMax          bool
+		desc              string
+		asgs              []string
+		handler           readiness
+		err               error
+		oldIds            map[string][]string
+		newIds            map[string][]string
+		asgCurrentDesired map[string]int64
+		originalDesired   map[string]int64
+		newDesired        map[string]int64
+		max               map[string]int64
+		terminate         []string
+		canIncreaseMax    bool
 	}{
+		{
+			"2 asgs adjust first run",
+			[]string{"myasg", "anotherasg"},
+			nil,
+			nil,
+			map[string][]string{
+				"myasg":      {"1", "2"},
+				"anotherasg": {},
+			},
+			map[string][]string{
+				"myasg":      {},
+				"anotherasg": {"8", "9", "10"},
+			},
+			map[string]int64{"myasg": 2, "anotherasg": 3},
+			map[string]int64{"myasg": 2},
+			map[string]int64{"myasg": 3},
+			map[string]int64{"myasg": 3, "anotherasg": 4},
+			[]string{},
+			false,
+		},
 		{
 			"2 asgs adjust in progress",
 			[]string{"myasg", "anotherasg"},
@@ -185,35 +200,11 @@ func TestAdjust(t *testing.T) {
 				"myasg":      {"2", "3"},
 				"anotherasg": {"8", "9", "10"},
 			},
-			map[string]int64{"myasg": 2, "anotherasg": 10},
-			map[string]int64{"myasg": 2, "anotherasg": 10},
-			map[string]int64{"myasg": 2, "anotherasg": 0},
-			map[string]int64{"myasg": 2},
-			map[string]int64{"myasg": 2, "anotherasg": 0},
-			map[string]int64{"myasg": 3, "anotherasg": 11},
-			[]string{"1"},
-			false,
-		},
-		{
-			"2 asgs adjust first run",
-			[]string{"myasg", "anotherasg"},
-			nil,
-			nil,
-			map[string][]string{
-				"myasg":      {"1"},
-				"anotherasg": {},
-			},
-			map[string][]string{
-				"myasg":      {"2", "3"},
-				"anotherasg": {"8", "9", "10"},
-			},
-			map[string]int64{"myasg": 2},
+			map[string]int64{"myasg": 3, "anotherasg": 3},
+			map[string]int64{"myasg": 2, "anotherasg": 3},
 			map[string]int64{},
-			map[string]int64{"myasg": 2},
-			map[string]int64{"myasg": 3},
-			map[string]int64{"myasg": 2},
-			map[string]int64{"myasg": 3},
-			[]string{},
+			map[string]int64{"myasg": 3, "anotherasg": 4},
+			[]string{"1"},
 			false,
 		},
 		{
@@ -230,10 +221,8 @@ func TestAdjust(t *testing.T) {
 				"anotherasg": {"8", "9", "10"},
 			},
 			map[string]int64{"myasg": 2},
-			map[string]int64{},
 			map[string]int64{"myasg": 2},
 			map[string]int64{},
-			map[string]int64{"myasg": 2},
 			map[string]int64{"myasg": 3},
 			[]string{},
 			false,
@@ -242,7 +231,7 @@ func TestAdjust(t *testing.T) {
 			"2 asgs adjust increase max fail",
 			[]string{"myasg", "anotherasg"},
 			nil,
-			fmt.Errorf("Error setting desired to 3 for ASG myasg: unable to increase ASG myasg desired size to 3 as greater than max size 2"),
+			fmt.Errorf("[myasg] error setting desired to 3: unable to increase ASG myasg desired size to 3 as greater than max size 2"),
 			map[string][]string{
 				"myasg":      {"1"},
 				"anotherasg": {},
@@ -252,10 +241,8 @@ func TestAdjust(t *testing.T) {
 				"anotherasg": {"8", "9", "10"},
 			},
 			map[string]int64{"myasg": 2},
-			map[string]int64{},
 			map[string]int64{"myasg": 2},
 			map[string]int64{},
-			map[string]int64{"myasg": 2},
 			map[string]int64{"myasg": 2},
 			[]string{},
 			false,
@@ -274,10 +261,8 @@ func TestAdjust(t *testing.T) {
 				"anotherasg": {"8", "9", "10"},
 			},
 			map[string]int64{"myasg": 2},
-			map[string]int64{},
 			map[string]int64{"myasg": 2},
 			map[string]int64{"myasg": 3},
-			map[string]int64{"myasg": 2},
 			map[string]int64{"myasg": 2},
 			[]string{},
 			true,
@@ -292,7 +277,7 @@ func TestAdjust(t *testing.T) {
 				lcName := "lconfig"
 				oldLcName := fmt.Sprintf("old%s", lcName)
 				myHealthy := healthy
-				desired := tt.asgOriginalDesired[name]
+				desired := tt.asgCurrentDesired[name]
 				max := tt.max[name]
 				instances := make([]*autoscaling.Instance, 0)
 				for _, id := range tt.oldIds[name] {
@@ -312,13 +297,25 @@ func TestAdjust(t *testing.T) {
 					})
 				}
 				// construct the Group we will pass
-				validGroups[n] = &autoscaling.Group{
+				validGroup := &autoscaling.Group{
 					AutoScalingGroupName:    &name,
 					DesiredCapacity:         &desired,
 					Instances:               instances,
 					LaunchConfigurationName: &lcName,
 					MaxSize:                 &max,
 				}
+				if originalDesired, ok := tt.originalDesired[name]; ok {
+					validGroup.Tags = []*autoscaling.TagDescription{
+						{
+							Key:               aws.String(asgTagNameOriginalDesired),
+							PropagateAtLaunch: aws.Bool(false),
+							ResourceId:        &name,
+							ResourceType:      aws.String("auto-scaling-group"),
+							Value:             aws.String(strconv.FormatInt(originalDesired, 10)),
+						},
+					}
+				}
+				validGroups[n] = validGroup
 			}
 			asgSvc := &mockAsgSvc{
 				groups: validGroups,
@@ -345,10 +342,6 @@ func TestAdjust(t *testing.T) {
 				t.Errorf("%d: mismatched errors, actual then expected", i)
 				t.Logf("%v", err)
 				t.Logf("%v", tt.err)
-			case !testStringInt64MapEq(tt.newOriginalDesired, tt.expectedOriginalDesired):
-				t.Errorf("%d: Mismatched desired, actual then expected", i)
-				t.Logf("%v", tt.originalDesired)
-				t.Logf("%v", tt.newOriginalDesired)
 			}
 
 			// check each svc with its correct calls

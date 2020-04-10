@@ -42,6 +42,8 @@ The update methodology is simple:
 
 ASG Roller will check both launch configurations, comparing names of the launch configuration used, and launch templates, comparing ID or Name, and version.
 
+ASG Roller will store the original desired value of the ASG as a tag on the ASG, with the key `aws-asg-roller/OriginalDesired`. This helps maintain state in the situation where the process terminates.
+
 ## App Awareness
 In addition to the above, ASG Roller is able to insert app-specific logic at two distinct points:
 
@@ -89,13 +91,14 @@ These permissions are as follows:
   - "autoscaling:TerminateInstanceInAutoScalingGroup"
   - "autoscaling:UpdateAutoScalingGroup"
   - "autoscaling:DescribeTags"
+  - "autoscaling:CreateOrUpdateTags"
   - "autoscaling:DescribeLaunchConfigurations"
   - "ec2:DescribeLaunchTemplates"
   - "ec2:DescribeInstances"
   Resource: "*"
 ```
 
-These permissions can be set either via runninn ASG Roller on an AWS node that has the correct role, or via API keys to a user that has the correct roles/permissions.
+These permissions can be set either via running ASG Roller on an AWS node that has the correct role, or via API keys to a user that has the correct roles/permissions.
 
 * If the AWS environment variables `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`are set, it will use those
 * If the AWS environment variables are not set, it will fall back to relying on the local node's IAM role
@@ -249,6 +252,13 @@ Since AWS recommends launch templates over launch configurations going forward, 
 ## Building
 
 The only pre-requisite for building is [docker](https://docker.com). All builds take place inside a docker container. If you want, you _may_ build locally using locally installed go. It requires go version 1.12+.
+
+If required, set the target OS/architecture, for example:
+
+```sh
+export BUILDOS=linux
+export BUILDARCH=amd64
+```
 
 To build:
 

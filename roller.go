@@ -22,6 +22,13 @@ func adjust(asgList []string, ec2Svc ec2iface.EC2API, asgSvc autoscalingiface.Au
 	if err != nil {
 		return fmt.Errorf("Unexpected error describing ASGs, skipping: %v", err)
 	}
+
+	// look up and record original desired values
+	err = populateOriginalDesired(originalDesired, asgs, asgSvc)
+	if err != nil {
+		return fmt.Errorf("unexpected error looking up original desired values for ASGs, skipping: %v", err)
+	}
+
 	asgMap := map[string]*autoscaling.Group{}
 	// get information on all of the ec2 instances
 	instances := make([]*autoscaling.Instance, 0)
@@ -31,7 +38,7 @@ func adjust(asgList []string, ec2Svc ec2iface.EC2API, asgSvc autoscalingiface.Au
 			return fmt.Errorf("unable to group instances into new and old: %v", err)
 		}
 		// if there are no outdated instances skip updating
-		if len(oldInstances) == 0 {
+		if len(oldInstances) == 0 && *asg.DesiredCapacity == originalDesired[*asg.AutoScalingGroupName] {
 			log.Printf("[%s] ok\n", *asg.AutoScalingGroupName)
 			err := ensureNoScaleDownDisabledAnnotation(ec2Svc, mapInstancesIds(asg.Instances))
 			if err != nil {
@@ -45,7 +52,6 @@ func adjust(asgList []string, ec2Svc ec2iface.EC2API, asgSvc autoscalingiface.Au
 		asgMap[*asg.AutoScalingGroupName] = asg
 		instances = append(instances, oldInstances...)
 		instances = append(instances, newInstances...)
-
 	}
 	// no instances no work needed
 	if len(instances) == 0 {
@@ -54,7 +60,7 @@ func adjust(asgList []string, ec2Svc ec2iface.EC2API, asgSvc autoscalingiface.Au
 	ids := mapInstancesIds(instances)
 	hostnames, err := awsGetHostnames(ec2Svc, ids)
 	if err != nil {
-		return fmt.Errorf("Unable to get aws hostnames for ids %v: %v", ids, err)
+		return fmt.Errorf("unable to get aws hostnames for ids %v: %v", ids, err)
 	}
 	hostnameMap := map[string]string{}
 	for i, id := range ids {
@@ -62,34 +68,29 @@ func adjust(asgList []string, ec2Svc ec2iface.EC2API, asgSvc autoscalingiface.Au
 	}
 	newDesired := map[string]int64{}
 	newTerminate := map[string]string{}
-	newOriginalDesired := map[string]int64{}
-	errors := map[*string]error{}
 
 	// keep keyed references to the ASGs
 	for _, asg := range asgMap {
-		newDesiredA, newOriginalA, terminateID, err := calculateAdjustment(asg, ec2Svc, hostnameMap, readinessHandler, originalDesired[*asg.AutoScalingGroupName])
-		log.Printf("[%s] desired: %d original: %d", *asg.AutoScalingGroupName, newDesiredA, newOriginalA)
+		newDesiredA, terminateID, err := calculateAdjustment(asg, ec2Svc, hostnameMap, readinessHandler, originalDesired[*asg.AutoScalingGroupName])
+		log.Printf("[%s] desired: %d original: %d", *asg.AutoScalingGroupName, newDesiredA, originalDesired[*asg.AutoScalingGroupName])
 		if err != nil {
-			log.Printf("[%s] error: %v\n", *asg.AutoScalingGroupName, err)
+			log.Printf("[%s] error calculating adjustment - skipping: %v\n", *asg.AutoScalingGroupName, err)
+			continue
 		}
-		newDesired[*asg.AutoScalingGroupName] = newDesiredA
-		newOriginalDesired[*asg.AutoScalingGroupName] = newOriginalA
+		if newDesiredA != *asg.DesiredCapacity {
+			newDesired[*asg.AutoScalingGroupName] = newDesiredA
+		}
 		if terminateID != "" {
-			log.Printf("[%s] Scheduled termination: %s", *asg.AutoScalingGroupName, terminateID)
+			log.Printf("[%s] scheduled termination: %s", *asg.AutoScalingGroupName, terminateID)
 			newTerminate[*asg.AutoScalingGroupName] = terminateID
 		}
-		errors[asg.AutoScalingGroupName] = err
-	}
-	// adjust original desired
-	for asg, desired := range newOriginalDesired {
-		originalDesired[asg] = desired
 	}
 	// adjust current desired
 	for asg, desired := range newDesired {
 		log.Printf("[%s] set desired instances: %d\n", asg, desired)
 		err = setAsgDesired(asgSvc, asgMap[asg], desired)
 		if err != nil {
-			return fmt.Errorf("Error setting desired to %d for ASG %s: %v", desired, asg, err)
+			return fmt.Errorf("[%s] error setting desired to %d: %v", asg, desired, err)
 		}
 	}
 	// terminate nodes
@@ -98,7 +99,7 @@ func adjust(asgList []string, ec2Svc ec2iface.EC2API, asgSvc autoscalingiface.Au
 		// all new config instances are ready, terminate an old one
 		err = awsTerminateNode(asgSvc, id)
 		if err != nil {
-			return fmt.Errorf("Error terminating node %s in ASG %s: %v", id, asg, err)
+			return fmt.Errorf("[%s] error terminating node %s: %v", asg, id, err)
 		}
 	}
 	return nil
@@ -118,29 +119,31 @@ func ensureNoScaleDownDisabledAnnotation(ec2Svc ec2iface.EC2API, ids []string) e
 // this makes no actual adjustment, only calculates what new settings should be
 // returns:
 //   what the new desired number of instances should be
-//   what the new original desired should be, primarily if it should be reset
 //   ID of an instance to terminate, "" if none
 //   error
-func calculateAdjustment(asg *autoscaling.Group, ec2Svc ec2iface.EC2API, hostnameMap map[string]string, readinessHandler readiness, originalDesired int64) (int64, int64, string, error) {
+func calculateAdjustment(asg *autoscaling.Group, ec2Svc ec2iface.EC2API, hostnameMap map[string]string, readinessHandler readiness, originalDesired int64) (int64, string, error) {
 	desired := *asg.DesiredCapacity
 
 	// get instances with old launch config
 	oldInstances, newInstances, err := groupInstances(asg, ec2Svc)
 	if err != nil {
-		return originalDesired, 0, "", fmt.Errorf("unable to group instances into new and old: %v", err)
+		return originalDesired, "", fmt.Errorf("unable to group instances into new and old: %v", err)
 	}
 
 	// Possibilities:
 	// 1- we have some old ones, but have not started updates yet: set the desired, increment and loop
-	// 2- we have no old ones, but have started updates: we must be at end, so finish
+	// 2- we have no old ones: we must be at end or have no work to do, so finish
 	// 3- we have some old ones, but have started updates: run the updates
 	if len(oldInstances) == 0 {
-		if originalDesired > 0 {
-			return originalDesired, 0, "", nil
+		// we are done
+		if verbose && desired != originalDesired {
+			log.Printf("[%s] returning desired to original value %d", *asg.AutoScalingGroupName, originalDesired)
 		}
+		return originalDesired, "", nil
 	}
-	if originalDesired == 0 {
-		return desired + 1, desired, "", nil
+	if originalDesired == desired {
+		// we have not started updates; raise the desired count
+		return originalDesired + 1, "", nil
 	}
 
 	// how we determine if we can terminate one
@@ -157,10 +160,9 @@ func calculateAdjustment(asg *autoscaling.Group, ec2Svc ec2iface.EC2API, hostnam
 		if *i.HealthStatus == healthy {
 			readyCount++
 		}
-
 	}
 	if int64(readyCount) < originalDesired+1 {
-		return desired, originalDesired, "", nil
+		return desired, "", nil
 	}
 	// are any of the updated config instances not ready?
 	unReadyCount := 0
@@ -171,7 +173,7 @@ func calculateAdjustment(asg *autoscaling.Group, ec2Svc ec2iface.EC2API, hostnam
 		}
 	}
 	if unReadyCount > 0 {
-		return desired, originalDesired, "", nil
+		return desired, "", nil
 	}
 	// do we have additional requirements for readiness?
 	if readinessHandler != nil {
@@ -191,11 +193,11 @@ func calculateAdjustment(asg *autoscaling.Group, ec2Svc ec2iface.EC2API, hostnam
 		}
 		unReadyCount, err = readinessHandler.getUnreadyCount(hostnames, ids)
 		if err != nil {
-			return desired, originalDesired, "", fmt.Errorf("Error getting readiness new node status: %v", err)
+			return desired, "", fmt.Errorf("Error getting readiness new node status: %v", err)
 		}
 		if unReadyCount > 0 {
 			log.Printf("[%s] Nodes not ready: %d", *asg.AutoScalingGroupName, unReadyCount)
-			return desired, originalDesired, "", nil
+			return desired, "", nil
 		}
 	}
 	candidate := *oldInstances[0].InstanceId
@@ -209,16 +211,16 @@ func calculateAdjustment(asg *autoscaling.Group, ec2Svc ec2iface.EC2API, hostnam
 		hostname = hostnameMap[candidate]
 		err = readinessHandler.prepareTermination([]string{hostname}, []string{candidate})
 		if err != nil {
-			return desired, originalDesired, "", fmt.Errorf("Unexpected error readiness handler terminating node %s: %v", hostname, err)
+			return desired, "", fmt.Errorf("Unexpected error readiness handler terminating node %s: %v", hostname, err)
 		}
 	}
 
 	// all new config instances are ready, terminate an old one
-	return desired, originalDesired, candidate, nil
+	return desired, candidate, nil
 }
 
 // groupInstances handles all of the logic for determining which nodes in the ASG have an old or outdated
-// config, and which are up to date. It should to nothing else.
+// config, and which are up to date. It should do nothing else.
 // The entire rest of the code should rely on this for making the determination
 func groupInstances(asg *autoscaling.Group, ec2Svc ec2iface.EC2API) ([]*autoscaling.Instance, []*autoscaling.Instance, error) {
 	oldInstances := make([]*autoscaling.Instance, 0)
@@ -246,11 +248,11 @@ func groupInstances(asg *autoscaling.Group, ec2Svc ec2iface.EC2API) ([]*autoscal
 		switch {
 		case targetLt.LaunchTemplateId != nil && *targetLt.LaunchTemplateId != "":
 			if targetTemplate, err = awsGetLaunchTemplateByID(ec2Svc, *targetLt.LaunchTemplateId); err != nil {
-				return nil, nil, fmt.Errorf("error retrieving information about launch template ID %s: %v", *targetLt.LaunchTemplateId, err)
+				return nil, nil, fmt.Errorf("[%s] error retrieving information about launch template ID %s: %v", *asg.AutoScalingGroupName, *targetLt.LaunchTemplateId, err)
 			}
 		case targetLt.LaunchTemplateName != nil && *targetLt.LaunchTemplateName != "":
 			if targetTemplate, err = awsGetLaunchTemplateByName(ec2Svc, *targetLt.LaunchTemplateName); err != nil {
-				return nil, nil, fmt.Errorf("error retrieving information about launch template name %s: %v", *targetLt.LaunchTemplateName, err)
+				return nil, nil, fmt.Errorf("[%s] error retrieving information about launch template name %s: %v", *asg.AutoScalingGroupName, *targetLt.LaunchTemplateName, err)
 			}
 		default:
 			return nil, nil, fmt.Errorf("AutoScaling Group %s had invalid Launch Template", *asg.AutoScalingGroupName)
@@ -267,31 +269,31 @@ func groupInstances(asg *autoscaling.Group, ec2Svc ec2iface.EC2API) ([]*autoscal
 			switch {
 			case i.LaunchTemplate == nil:
 				if verbose {
-					log.Printf("Adding %s to list of old instances because it does not have a launch template", *i.InstanceId)
+					log.Printf("[%s] adding %s to list of old instances because it does not have a launch template", *asg.AutoScalingGroupName, *i.InstanceId)
 				}
 				// has no launch template at all
 				oldInstances = append(oldInstances, i)
 			case aws.StringValue(i.LaunchTemplate.LaunchTemplateName) != aws.StringValue(targetLt.LaunchTemplateName):
 				// mismatched name
 				if verbose {
-					log.Printf("Adding %s to list of old instances because its name is %s and the target template's name is %s", *i.InstanceId, *i.LaunchTemplate.LaunchTemplateName, *targetLt.LaunchTemplateName)
+					log.Printf("[%s] adding %s to list of old instances because its name is %s and the target template's name is %s", *asg.AutoScalingGroupName, *i.InstanceId, *i.LaunchTemplate.LaunchTemplateName, *targetLt.LaunchTemplateName)
 				}
 				oldInstances = append(oldInstances, i)
 			case aws.StringValue(i.LaunchTemplate.LaunchTemplateId) != aws.StringValue(targetLt.LaunchTemplateId):
 				// mismatched ID
 				if verbose {
-					log.Printf("Adding %s to list of old instances because its template id is %s and the target template's id is %s", *i.InstanceId, *i.LaunchTemplate.LaunchTemplateId, *targetLt.LaunchTemplateId)
+					log.Printf("[%s] adding %s to list of old instances because its template id is %s and the target template's id is %s", *asg.AutoScalingGroupName, *i.InstanceId, *i.LaunchTemplate.LaunchTemplateId, *targetLt.LaunchTemplateId)
 				}
 				oldInstances = append(oldInstances, i)
 			// name and id match, just need to check versions
 			case !compareLaunchTemplateVersions(targetTemplate, targetLt, i.LaunchTemplate):
 				if verbose {
-					log.Printf("Adding %s to list of old instances because the launch template versions do not match (%s!=%s)", *i.InstanceId, *i.LaunchTemplate.Version, *targetLt.Version)
+					log.Printf("[%s] adding %s to list of old instances because the launch template versions do not match (%s!=%s)", *asg.AutoScalingGroupName, *i.InstanceId, *i.LaunchTemplate.Version, *targetLt.Version)
 				}
 				oldInstances = append(oldInstances, i)
 			default:
 				if verbose {
-					log.Printf("Adding %s to list of new instances because the instance matches the launch template with id %s", *i.InstanceId, *targetLt.LaunchTemplateId)
+					log.Printf("[%s] adding %s to list of new instances because the instance matches the launch template with id %s", *asg.AutoScalingGroupName, *i.InstanceId, *targetLt.LaunchTemplateId)
 				}
 				newInstances = append(newInstances, i)
 			}
@@ -303,13 +305,13 @@ func groupInstances(asg *autoscaling.Group, ec2Svc ec2iface.EC2API) ([]*autoscal
 				newInstances = append(newInstances, i)
 			} else {
 				if verbose {
-					log.Printf("Adding %s to list of old instances because the launch configuration names do not match (%s!=%s)", *i.InstanceId, *i.LaunchConfigurationName, *targetLc)
+					log.Printf("[%s] adding %s to list of old instances because the launch configuration names do not match (%s!=%s)", *asg.AutoScalingGroupName, *i.InstanceId, *i.LaunchConfigurationName, *targetLc)
 				}
 				oldInstances = append(oldInstances, i)
 			}
 		}
 	} else {
-		return nil, nil, fmt.Errorf("both target launch configuration and launch template are nil")
+		return nil, nil, fmt.Errorf("[%s] both target launch configuration and launch template are nil", *asg.AutoScalingGroupName)
 	}
 	return oldInstances, newInstances, nil
 }
