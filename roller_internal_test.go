@@ -84,11 +84,11 @@ func TestCalculateAdjustment(t *testing.T) {
 		// 2 old, 1 new healthy, 0 new unhealthy, 1 new unready, should not change anything
 		{[]string{"1", "2"}, []string{"3"}, []string{}, 3, 2, unreadyCountHandler, 3, "", nil},
 		// 2 old, 1 new healthy, 0 new unhealthy, 0 new unready, 1 error: should not change anything
-		{[]string{"1", "2"}, []string{"3"}, []string{}, 3, 2, unreadyErrorHandler, 3, "", fmt.Errorf("Error")},
+		{[]string{"1", "2"}, []string{"3"}, []string{}, 3, 2, unreadyErrorHandler, 3, "", fmt.Errorf("error")},
 		// 2 old, 1 new healthy, 0 new unhealthy, 0 unready, remove an old one
 		{[]string{"1", "2"}, []string{"3"}, []string{}, 3, 2, readyHandler, 3, "1", nil},
 		// 2 old, 1 new healthy, 0 new unhealthy, 0 new unready, 1 error: should not change anything
-		{[]string{"1", "2"}, []string{"3"}, []string{}, 3, 2, terminateErrorHandler, 3, "", fmt.Errorf("Unexpected error")},
+		{[]string{"1", "2"}, []string{"3"}, []string{}, 3, 2, terminateErrorHandler, 3, "", fmt.Errorf("unexpected error")},
 		// 2 old, 1 new healthy, 0 new unhealthy, 0 unready, successful terminate: remove an old one
 		{[]string{"1", "2"}, []string{"3"}, []string{}, 3, 2, terminateHandler, 3, "1", nil},
 	}
