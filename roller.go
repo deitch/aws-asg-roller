@@ -72,16 +72,16 @@ func adjust(asgList []string, ec2Svc ec2iface.EC2API, asgSvc autoscalingiface.Au
 	// keep keyed references to the ASGs
 	for _, asg := range asgMap {
 		newDesiredA, terminateID, err := calculateAdjustment(asg, ec2Svc, hostnameMap, readinessHandler, originalDesired[*asg.AutoScalingGroupName])
-		log.Printf("[%s] desired: %d original: %d", *asg.AutoScalingGroupName, newDesiredA, originalDesired[*asg.AutoScalingGroupName])
+		log.Printf("[%v] desired: %d original: %d", asg.AutoScalingGroupName, newDesiredA, originalDesired[*asg.AutoScalingGroupName])
 		if err != nil {
-			log.Printf("[%s] error calculating adjustment - skipping: %v\n", *asg.AutoScalingGroupName, err)
+			log.Printf("[%v] error calculating adjustment - skipping: %v\n", asg.AutoScalingGroupName, err)
 			continue
 		}
 		if newDesiredA != *asg.DesiredCapacity {
 			newDesired[*asg.AutoScalingGroupName] = newDesiredA
 		}
 		if terminateID != "" {
-			log.Printf("[%s] scheduled termination: %s", *asg.AutoScalingGroupName, terminateID)
+			log.Printf("[%v] scheduled termination: %s", asg.AutoScalingGroupName, terminateID)
 			newTerminate[*asg.AutoScalingGroupName] = terminateID
 		}
 	}
@@ -110,7 +110,7 @@ func adjust(asgList []string, ec2Svc ec2iface.EC2API, asgSvc autoscalingiface.Au
 func ensureNoScaleDownDisabledAnnotation(ec2Svc ec2iface.EC2API, ids []string) error {
 	hostnames, err := awsGetHostnames(ec2Svc, ids)
 	if err != nil {
-		return fmt.Errorf("Unable to get aws hostnames for ids %v: %v", ids, err)
+		return fmt.Errorf("unable to get aws hostnames for ids %v: %v", ids, err)
 	}
 	return removeScaleDownDisabledAnnotation(hostnames)
 }
@@ -193,10 +193,10 @@ func calculateAdjustment(asg *autoscaling.Group, ec2Svc ec2iface.EC2API, hostnam
 		}
 		unReadyCount, err = readinessHandler.getUnreadyCount(hostnames, ids)
 		if err != nil {
-			return desired, "", fmt.Errorf("Error getting readiness new node status: %v", err)
+			return desired, "", fmt.Errorf("error getting readiness new node status: %v", err)
 		}
 		if unReadyCount > 0 {
-			log.Printf("[%s] Nodes not ready: %d", *asg.AutoScalingGroupName, unReadyCount)
+			log.Printf("[%v] Nodes not ready: %d", asg.AutoScalingGroupName, unReadyCount)
 			return desired, "", nil
 		}
 	}
@@ -211,7 +211,7 @@ func calculateAdjustment(asg *autoscaling.Group, ec2Svc ec2iface.EC2API, hostnam
 		hostname = hostnameMap[candidate]
 		err = readinessHandler.prepareTermination([]string{hostname}, []string{candidate})
 		if err != nil {
-			return desired, "", fmt.Errorf("Unexpected error readiness handler terminating node %s: %v", hostname, err)
+			return desired, "", fmt.Errorf("unexpected error readiness handler terminating node %s: %v", hostname, err)
 		}
 	}
 
@@ -248,11 +248,11 @@ func groupInstances(asg *autoscaling.Group, ec2Svc ec2iface.EC2API) ([]*autoscal
 		switch {
 		case targetLt.LaunchTemplateId != nil && *targetLt.LaunchTemplateId != "":
 			if targetTemplate, err = awsGetLaunchTemplateByID(ec2Svc, *targetLt.LaunchTemplateId); err != nil {
-				return nil, nil, fmt.Errorf("[%s] error retrieving information about launch template ID %s: %v", *asg.AutoScalingGroupName, *targetLt.LaunchTemplateId, err)
+				return nil, nil, fmt.Errorf("[%v] error retrieving information about launch template ID %v: %v", asg.AutoScalingGroupName, targetLt.LaunchTemplateId, err)
 			}
 		case targetLt.LaunchTemplateName != nil && *targetLt.LaunchTemplateName != "":
 			if targetTemplate, err = awsGetLaunchTemplateByName(ec2Svc, *targetLt.LaunchTemplateName); err != nil {
-				return nil, nil, fmt.Errorf("[%s] error retrieving information about launch template name %s: %v", *asg.AutoScalingGroupName, *targetLt.LaunchTemplateName, err)
+				return nil, nil, fmt.Errorf("[%v] error retrieving information about launch template name %v: %v", asg.AutoScalingGroupName, targetLt.LaunchTemplateName, err)
 			}
 		default:
 			return nil, nil, fmt.Errorf("AutoScaling Group %s had invalid Launch Template", *asg.AutoScalingGroupName)
@@ -262,38 +262,38 @@ func groupInstances(asg *autoscaling.Group, ec2Svc ec2iface.EC2API) ([]*autoscal
 			return nil, nil, fmt.Errorf("no template found")
 		}
 		if verbose {
-			log.Printf("Grouping instances for ASG named %s with target template name %s, id %s, latest version %d and default version %d", *asg.AutoScalingGroupName, *targetTemplate.LaunchTemplateName, *targetTemplate.LaunchTemplateId, *targetTemplate.LatestVersionNumber, *targetTemplate.DefaultVersionNumber)
+			log.Printf("Grouping instances for ASG named %v with target template name %v, id %v, latest version %v and default version %v", asg.AutoScalingGroupName, targetTemplate.LaunchTemplateName, targetTemplate.LaunchTemplateId, targetTemplate.LatestVersionNumber, targetTemplate.DefaultVersionNumber)
 		}
 		// now we can loop through each node and compare
 		for _, i := range asg.Instances {
 			switch {
 			case i.LaunchTemplate == nil:
 				if verbose {
-					log.Printf("[%s] adding %s to list of old instances because it does not have a launch template", *asg.AutoScalingGroupName, *i.InstanceId)
+					log.Printf("[%v] adding %v to list of old instances because it does not have a launch template", asg.AutoScalingGroupName, i.InstanceId)
 				}
 				// has no launch template at all
 				oldInstances = append(oldInstances, i)
 			case aws.StringValue(i.LaunchTemplate.LaunchTemplateName) != aws.StringValue(targetLt.LaunchTemplateName):
 				// mismatched name
 				if verbose {
-					log.Printf("[%s] adding %s to list of old instances because its name is %s and the target template's name is %s", *asg.AutoScalingGroupName, *i.InstanceId, *i.LaunchTemplate.LaunchTemplateName, *targetLt.LaunchTemplateName)
+					log.Printf("[%v] adding %v to list of old instances because its name is %v and the target template's name is %v", asg.AutoScalingGroupName, i.InstanceId, i.LaunchTemplate.LaunchTemplateName, targetLt.LaunchTemplateName)
 				}
 				oldInstances = append(oldInstances, i)
 			case aws.StringValue(i.LaunchTemplate.LaunchTemplateId) != aws.StringValue(targetLt.LaunchTemplateId):
 				// mismatched ID
 				if verbose {
-					log.Printf("[%s] adding %s to list of old instances because its template id is %s and the target template's id is %s", *asg.AutoScalingGroupName, *i.InstanceId, *i.LaunchTemplate.LaunchTemplateId, *targetLt.LaunchTemplateId)
+					log.Printf("[%v] adding %v to list of old instances because its template id is %v and the target template's id is %v", asg.AutoScalingGroupName, i.InstanceId, i.LaunchTemplate.LaunchTemplateId, targetLt.LaunchTemplateId)
 				}
 				oldInstances = append(oldInstances, i)
 			// name and id match, just need to check versions
 			case !compareLaunchTemplateVersions(targetTemplate, targetLt, i.LaunchTemplate):
 				if verbose {
-					log.Printf("[%s] adding %s to list of old instances because the launch template versions do not match (%s!=%s)", *asg.AutoScalingGroupName, *i.InstanceId, *i.LaunchTemplate.Version, *targetLt.Version)
+					log.Printf("[%v] adding %v to list of old instances because the launch template versions do not match (%v!=%v)", asg.AutoScalingGroupName, i.InstanceId, i.LaunchTemplate.Version, targetLt.Version)
 				}
 				oldInstances = append(oldInstances, i)
 			default:
 				if verbose {
-					log.Printf("[%s] adding %s to list of new instances because the instance matches the launch template with id %s", *asg.AutoScalingGroupName, *i.InstanceId, *targetLt.LaunchTemplateId)
+					log.Printf("[%v] adding %v to list of new instances because the instance matches the launch template with id %v", asg.AutoScalingGroupName, i.InstanceId, targetLt.LaunchTemplateId)
 				}
 				newInstances = append(newInstances, i)
 			}
@@ -305,13 +305,13 @@ func groupInstances(asg *autoscaling.Group, ec2Svc ec2iface.EC2API) ([]*autoscal
 				newInstances = append(newInstances, i)
 			} else {
 				if verbose {
-					log.Printf("[%s] adding %s to list of old instances because the launch configuration names do not match (%s!=%s)", *asg.AutoScalingGroupName, *i.InstanceId, *i.LaunchConfigurationName, *targetLc)
+					log.Printf("[%v] adding %v to list of old instances because the launch configuration names do not match (%v!=%v)", asg.AutoScalingGroupName, i.InstanceId, i.LaunchConfigurationName, targetLc)
 				}
 				oldInstances = append(oldInstances, i)
 			}
 		}
 	} else {
-		return nil, nil, fmt.Errorf("[%s] both target launch configuration and launch template are nil", *asg.AutoScalingGroupName)
+		return nil, nil, fmt.Errorf("[%v] both target launch configuration and launch template are nil", asg.AutoScalingGroupName)
 	}
 	return oldInstances, newInstances, nil
 }
