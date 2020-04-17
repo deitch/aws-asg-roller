@@ -7,15 +7,13 @@ func p2v(p interface{}) interface{} {
 	case *string:
 		if value == nil {
 			return "<nil>"
-		} else {
-			return *value
 		}
+		return *value
 	case *int64:
 		if value == nil {
 			return "<nil>"
-		} else {
-			return *value
 		}
+		return *value
 	default:
 		return value
 	}
