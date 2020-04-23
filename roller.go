@@ -72,9 +72,9 @@ func adjust(asgList []string, ec2Svc ec2iface.EC2API, asgSvc autoscalingiface.Au
 	// keep keyed references to the ASGs
 	for _, asg := range asgMap {
 		newDesiredA, terminateID, err := calculateAdjustment(asg, ec2Svc, hostnameMap, readinessHandler, originalDesired[*asg.AutoScalingGroupName])
-		log.Printf("[%v] desired: %d original: %d", asg.AutoScalingGroupName, newDesiredA, originalDesired[*asg.AutoScalingGroupName])
+		log.Printf("[%v] desired: %d original: %d", p2v(asg.AutoScalingGroupName), newDesiredA, originalDesired[*asg.AutoScalingGroupName])
 		if err != nil {
-			log.Printf("[%v] error calculating adjustment - skipping: %v\n", asg.AutoScalingGroupName, err)
+			log.Printf("[%v] error calculating adjustment - skipping: %v\n", p2v(asg.AutoScalingGroupName), err)
 			continue
 		}
 		if newDesiredA != *asg.DesiredCapacity {
