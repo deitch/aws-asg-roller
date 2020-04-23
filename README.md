@@ -273,4 +273,3 @@ To build locally:
 $ make build BUILD=local     # builds the binary via locally installed go in `bin/aws-asg-roller-${OS}-${ARCH}
 $ make image BUILD=local     # builds the docker image
 ```
-
