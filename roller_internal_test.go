@@ -154,18 +154,19 @@ func TestCalculateAdjustment(t *testing.T) {
 
 func TestAdjust(t *testing.T) {
 	tests := []struct {
-		desc              string
-		asgs              []string
-		handler           readiness
-		err               error
-		oldIds            map[string][]string
-		newIds            map[string][]string
-		asgCurrentDesired map[string]int64
-		originalDesired   map[string]int64
-		newDesired        map[string]int64
-		max               map[string]int64
-		terminate         []string
-		canIncreaseMax    bool
+		desc                        string
+		asgs                        []string
+		handler                     readiness
+		err                         error
+		oldIds                      map[string][]string
+		newIds                      map[string][]string
+		asgCurrentDesired           map[string]int64
+		originalDesired             map[string]int64
+		newDesired                  map[string]int64
+		max                         map[string]int64
+		terminate                   []string
+		canIncreaseMax              bool
+		persistOriginalDesiredOnTag bool
 	}{
 		{
 			"2 asgs adjust first run",
@@ -186,9 +187,31 @@ func TestAdjust(t *testing.T) {
 			map[string]int64{"myasg": 3, "anotherasg": 4},
 			[]string{},
 			false,
+			false,
 		},
 		{
 			"2 asgs adjust in progress",
+			[]string{"myasg", "anotherasg"},
+			nil,
+			nil,
+			map[string][]string{
+				"myasg":      {"1"},
+				"anotherasg": {},
+			},
+			map[string][]string{
+				"myasg":      {"2", "3"},
+				"anotherasg": {"8", "9", "10"},
+			},
+			map[string]int64{"myasg": 2, "anotherasg": 10},
+			map[string]int64{"myasg": 2, "anotherasg": 10},
+			map[string]int64{"myasg": 3},
+			map[string]int64{"myasg": 3, "anotherasg": 11},
+			[]string{},
+			false,
+			false,
+		},
+		{
+			"2 asgs adjust in progress with ROLLER_ORIGINAL_DESIRED_ON_TAG set to true",
 			[]string{"myasg", "anotherasg"},
 			nil,
 			nil,
@@ -206,6 +229,7 @@ func TestAdjust(t *testing.T) {
 			map[string]int64{"myasg": 3, "anotherasg": 4},
 			[]string{"1"},
 			false,
+			true,
 		},
 		{
 			"2 asgs adjust complete",
@@ -225,6 +249,7 @@ func TestAdjust(t *testing.T) {
 			map[string]int64{},
 			map[string]int64{"myasg": 3},
 			[]string{},
+			false,
 			false,
 		},
 		{
@@ -246,6 +271,7 @@ func TestAdjust(t *testing.T) {
 			map[string]int64{"myasg": 2},
 			[]string{},
 			false,
+			false,
 		},
 		{
 			"2 asgs adjust increase max succeed",
@@ -266,6 +292,7 @@ func TestAdjust(t *testing.T) {
 			map[string]int64{"myasg": 2},
 			[]string{},
 			true,
+			false,
 		},
 	}
 
@@ -304,15 +331,18 @@ func TestAdjust(t *testing.T) {
 					LaunchConfigurationName: &lcName,
 					MaxSize:                 &max,
 				}
-				if originalDesired, ok := tt.originalDesired[name]; ok {
-					validGroup.Tags = []*autoscaling.TagDescription{
-						{
-							Key:               aws.String(asgTagNameOriginalDesired),
-							PropagateAtLaunch: aws.Bool(false),
-							ResourceId:        &name,
-							ResourceType:      aws.String("auto-scaling-group"),
-							Value:             aws.String(strconv.FormatInt(originalDesired, 10)),
-						},
+				storeOriginalDesiredOnTag = tt.persistOriginalDesiredOnTag
+				if tt.persistOriginalDesiredOnTag {
+					if originalDesired, ok := tt.originalDesired[name]; ok {
+						validGroup.Tags = []*autoscaling.TagDescription{
+							{
+								Key:               aws.String(asgTagNameOriginalDesired),
+								PropagateAtLaunch: aws.Bool(false),
+								ResourceId:        &name,
+								ResourceType:      aws.String("auto-scaling-group"),
+								Value:             aws.String(strconv.FormatInt(originalDesired, 10)),
+							},
+						}
 					}
 				}
 				validGroups[n] = validGroup
