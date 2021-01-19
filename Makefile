@@ -42,7 +42,7 @@ BUILDERTAG = $(IMGTAG)-builder
 BINDIR ?= bin
 BINARY ?= $(BINDIR)/aws-asg-roller-$(OS)-$(ARCH)
 
-GOVER ?= 1.12.4-alpine3.9
+GOVER ?= 1.15.6-alpine3.12
 
 GO ?= GOOS=$(OS) GOARCH=$(ARCH) GO111MODULE=on CGO_ENABLED=0
 
