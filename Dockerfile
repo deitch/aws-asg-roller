@@ -1,5 +1,5 @@
 # base golang image
-ARG GOVER="1.12.4-alpine3.9"
+ARG GOVER="1.15.6-alpine3.12"
 FROM golang:${GOVER} as golang
 
 ARG REPO
