@@ -60,14 +60,13 @@ func (k *kubernetesReadiness) getUnreadyCount(hostnames []string, ids []string) 
 func (k *kubernetesReadiness) prepareTermination(hostnames []string, ids []string) error {
 	// get the node reference - first need the hostname
 	var (
-		node     *corev1.Node
-		hostname string
-		err      error
+		node *corev1.Node
+		err  error
 	)
 	for _, h := range hostnames {
 		node, err = k.clientset.CoreV1().Nodes().Get(h, v1.GetOptions{})
 		if err != nil {
-			return fmt.Errorf("Unexpected error getting kubernetes node %s: %v", hostname, err)
+			return fmt.Errorf("Unexpected error getting kubernetes node %s: %v", h, err)
 		}
 		// set options and drain nodes
 		err = drain.Drain(k.clientset, []*corev1.Node{node}, &drain.DrainOptions{
@@ -77,7 +76,7 @@ func (k *kubernetesReadiness) prepareTermination(hostnames []string, ids []strin
 			DeleteLocalData:    k.deleteLocalData,
 		})
 		if err != nil {
-			return fmt.Errorf("Unexpected error draining kubernetes node %s: %v", hostname, err)
+			return fmt.Errorf("Unexpected error draining kubernetes node %s: %v", h, err)
 		}
 	}
 	return nil
@@ -143,13 +142,12 @@ func kubeGetReadinessHandler(ignoreDaemonSets bool, deleteLocalData bool) (readi
 }
 
 // setScaleDownDisabledAnnotation set the "cluster-autoscaler.kubernetes.io/scale-down-disabled" annotation
-// on the list of nodes if required. Returns a list of hostname where the annotation
+// on the list of nodes if required. Returns a list of 151 where the annotation
 // is applied.
 func setScaleDownDisabledAnnotation(hostnames []string) ([]string, error) {
 	// get the node reference - first need the hostname
 	var (
 		node      *corev1.Node
-		hostname  string
 		err       error
 		key       = clusterAutoscalerScaleDownDisabledFlag
 		annotated = []string{}
@@ -165,7 +163,7 @@ func setScaleDownDisabledAnnotation(hostnames []string) ([]string, error) {
 	for _, h := range hostnames {
 		node, err = nodes.Get(h, v1.GetOptions{})
 		if err != nil {
-			return annotated, fmt.Errorf("Unexpected error getting kubernetes node %s: %v", hostname, err)
+			return annotated, fmt.Errorf("Unexpected error getting kubernetes node %s: %v", h, err)
 		}
 		annotations := node.GetAnnotations()
 		if value := annotations[key]; value != "true" {
@@ -183,10 +181,9 @@ func setScaleDownDisabledAnnotation(hostnames []string) ([]string, error) {
 func removeScaleDownDisabledAnnotation(hostnames []string) error {
 	// get the node reference - first need the hostname
 	var (
-		node     *corev1.Node
-		hostname string
-		err      error
-		key      = clusterAutoscalerScaleDownDisabledFlag
+		node *corev1.Node
+		err  error
+		key  = clusterAutoscalerScaleDownDisabledFlag
 	)
 	clientset, err := kubeGetClientset()
 	if err != nil {
@@ -199,7 +196,7 @@ func removeScaleDownDisabledAnnotation(hostnames []string) error {
 	for _, h := range hostnames {
 		node, err = nodes.Get(h, v1.GetOptions{})
 		if err != nil {
-			return fmt.Errorf("Unexpected error getting kubernetes node %s: %v", hostname, err)
+			return fmt.Errorf("Unexpected error getting kubernetes node %s: %v", h, err)
 		}
 		annotations := node.GetAnnotations()
 		if _, ok := annotations[key]; ok {

@@ -3,6 +3,7 @@ module github.com/deitch/aws-asg-roller
 go 1.12
 
 require (
+	github.com/alexkohler/nakedret v1.0.0 // indirect
 	github.com/aws/aws-sdk-go v1.21.8
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/go-log/log v0.2.0 // indirect
@@ -17,10 +18,8 @@ require (
 	github.com/peterbourgon/diskv v2.0.1+incompatible // indirect
 	github.com/spf13/pflag v1.0.3 // indirect
 	github.com/stretchr/testify v1.3.0 // indirect
-	golang.org/x/crypto v0.0.0-20180808211826-de0752318171 // indirect
 	golang.org/x/oauth2 v0.0.0-20170412232759-a6bd8cefa181 // indirect
 	golang.org/x/sync v0.0.0-20190911185100-cd5d95a43a6e // indirect
-	golang.org/x/sys v0.0.0-20181107165924-66b7b1311ac8 // indirect
 	golang.org/x/time v0.0.0-20161028155119-f51c12702a4d // indirect
 	google.golang.org/appengine v1.3.0 // indirect
 	gopkg.in/inf.v0 v0.9.0 // indirect
@@ -28,4 +27,5 @@ require (
 	k8s.io/apimachinery v0.0.0-20180913025736-6dd46049f395
 	k8s.io/client-go v9.0.0+incompatible
 	k8s.io/kube-openapi v0.0.0-20190426233423-c5d3b0f4bee0 // indirect
+	mvdan.cc/unparam v0.0.0-20200314162735-0ac8026f7d06 // indirect
 )
