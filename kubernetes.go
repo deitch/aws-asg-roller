@@ -83,7 +83,13 @@ func (k *kubernetesReadiness) prepareTermination(hostnames []string, ids []strin
 }
 
 func kubeGetClientset() (*kubernetes.Clientset, error) {
-	useKube := os.Getenv("ROLLER_KUBERNETES") == "true"
+	envValue := os.Getenv("ROLLER_KUBERNETES")
+	// if it is *explicitly* set to false, then do nothing
+	if envValue == "false" {
+		return nil, nil
+	}
+	// if it is not explicitly set to false, then it depends on if we are in a cluster or not
+	useKube := envValue == "true"
 	// creates the in-cluster config
 	config, err := rest.InClusterConfig()
 	if err != nil {
