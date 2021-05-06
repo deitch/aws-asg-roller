@@ -16,7 +16,7 @@ const (
 )
 
 // adjust runs a single adjustment in the loop to update an ASG in a rolling fashion to latest launch config
-func adjust(kubernetesEnabled bool, asgList []string, ec2Svc ec2iface.EC2API, asgSvc autoscalingiface.AutoScalingAPI, readinessHandler readiness, originalDesired map[string]int64, storeOriginalDesiredOnTag, canIncreaseMax, verbose bool) error {
+func adjust(kubernetesEnabled bool, asgList []string, ec2Svc ec2iface.EC2API, asgSvc autoscalingiface.AutoScalingAPI, readinessHandler readiness, originalDesired map[string]int64, storeOriginalDesiredOnTag, canIncreaseMax, verbose, drain, drainForce bool) error {
 	// get information on all of the groups
 	asgs, err := awsDescribeGroups(asgSvc, asgList)
 	if err != nil {
@@ -71,7 +71,7 @@ func adjust(kubernetesEnabled bool, asgList []string, ec2Svc ec2iface.EC2API, as
 
 	// keep keyed references to the ASGs
 	for _, asg := range asgMap {
-		newDesiredA, terminateID, err := calculateAdjustment(kubernetesEnabled, asg, ec2Svc, hostnameMap, readinessHandler, originalDesired[*asg.AutoScalingGroupName], verbose)
+		newDesiredA, terminateID, err := calculateAdjustment(kubernetesEnabled, asg, ec2Svc, hostnameMap, readinessHandler, originalDesired[*asg.AutoScalingGroupName], verbose, drain, drainForce)
 		log.Printf("[%v] desired: %d original: %d", p2v(asg.AutoScalingGroupName), newDesiredA, originalDesired[*asg.AutoScalingGroupName])
 		if err != nil {
 			log.Printf("[%v] error calculating adjustment - skipping: %v\n", p2v(asg.AutoScalingGroupName), err)
@@ -121,7 +121,7 @@ func ensureNoScaleDownDisabledAnnotation(kubernetesEnabled bool, ec2Svc ec2iface
 //   what the new desired number of instances should be
 //   ID of an instance to terminate, "" if none
 //   error
-func calculateAdjustment(kubernetesEnabled bool, asg *autoscaling.Group, ec2Svc ec2iface.EC2API, hostnameMap map[string]string, readinessHandler readiness, originalDesired int64, verbose bool) (int64, string, error) {
+func calculateAdjustment(kubernetesEnabled bool, asg *autoscaling.Group, ec2Svc ec2iface.EC2API, hostnameMap map[string]string, readinessHandler readiness, originalDesired int64, verbose, drain, drainForce bool) (int64, string, error) {
 	desired := *asg.DesiredCapacity
 
 	// get instances with old launch config
@@ -209,7 +209,7 @@ func calculateAdjustment(kubernetesEnabled bool, asg *autoscaling.Group, ec2Svc 
 			err      error
 		)
 		hostname = hostnameMap[candidate]
-		err = readinessHandler.prepareTermination([]string{hostname}, []string{candidate})
+		err = readinessHandler.prepareTermination([]string{hostname}, []string{candidate}, drain, drainForce)
 		if err != nil {
 			return desired, "", fmt.Errorf("unexpected error readiness handler terminating node %s: %v", hostname, err)
 		}

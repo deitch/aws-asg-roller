@@ -29,7 +29,11 @@ func main() {
 
 	// infinite loop
 	for {
-		err := adjust(configs.KubernetesEnabled, configs.ASGS, ec2Svc, asgSvc, readinessHandler, originalDesired, configs.OriginalDesiredOnTag, configs.IncreaseMax, configs.Verbose)
+		err := adjust(
+			configs.KubernetesEnabled, configs.ASGS, ec2Svc, asgSvc,
+			readinessHandler, originalDesired, configs.OriginalDesiredOnTag,
+			configs.IncreaseMax, configs.Verbose, configs.Drain, configs.DrainForce,
+		)
 		if err != nil {
 			log.Printf("Error adjusting AutoScaling Groups: %v", err)
 		}

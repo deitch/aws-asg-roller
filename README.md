@@ -228,6 +228,8 @@ ASG Roller takes its configuration via environment variables. All environment va
 
 * `ROLLER_ASG` [`string`, required]: comma-separated list of auto-scaling groups that should be managed.
 * `ROLLER_KUBERNETES` [`bool`, default: `true`]: If set to `true`, will check if a new node is ready via-a-vis Kubernetes before declaring it "ready", and will drain an old node before eliminating it. Defaults to `true` when running in Kubernetes as a pod, `false` otherwise.
+* `ROLLER_DRAIN` [`bool`, default: `true`]: If set to `true`, will handle draining of pods and other kubernetes resources. Consider setting to false if your distribution has a built in drain on terminate.
+* `ROLLER_DRAIN_FORCE` [`bool` default: `true`]: If drain will force delete kubernetes resources if they violate PDB or grace periods.
 * `ROLLER_IGNORE_DAEMONSETS` [`bool`, default: `true`]: If set to `false`, will not reclaim a node until there are no DaemonSets running on the node; if set to `true` (default), will reclaim node when all regular pods are drained off, but will ignore the presence of DaemonSets, which should be present on every node anyways. Normally, you want this set to `true`.
 * `ROLLER_DELETE_LOCAL_DATA` [`bool`, default: `false`]: If set to `false` (default), will not reclaim a node until there are no pods with [emptyDir](https://kubernetes.io/docs/concepts/storage/volumes/#emptydir) running on the node; if set to `true`, will continue to terminate the pod and delete the local data before reclaiming the node. The default is `false` to maintain backward compatibility.
 * `ROLLER_INTERVAL` [`time.Duration`, default: `30s`]: Time between roller runs. Takes time duration such as 10s, 10m, 10d

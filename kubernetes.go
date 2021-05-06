@@ -6,7 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
-	drain "github.com/openshift/kubernetes-drain"
+	drainer "github.com/openshift/kubernetes-drain"
 	corev1 "k8s.io/api/core/v1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
@@ -57,22 +57,28 @@ func (k *kubernetesReadiness) getUnreadyCount(hostnames []string, ids []string) 
 	}
 	return unReadyCount, nil
 }
-func (k *kubernetesReadiness) prepareTermination(hostnames []string, ids []string) error {
+func (k *kubernetesReadiness) prepareTermination(hostnames []string, ids []string, drain, drainForce bool) error {
 	// get the node reference - first need the hostname
 	var (
 		node *corev1.Node
 		err  error
 	)
+
+	// Skip drain
+	if !drain {
+		return nil
+	}
+
 	for _, h := range hostnames {
 		node, err = k.clientset.CoreV1().Nodes().Get(h, v1.GetOptions{})
 		if err != nil {
 			return fmt.Errorf("Unexpected error getting kubernetes node %s: %v", h, err)
 		}
 		// set options and drain nodes
-		err = drain.Drain(k.clientset, []*corev1.Node{node}, &drain.DrainOptions{
+		err = drainer.Drain(k.clientset, []*corev1.Node{node}, &drainer.DrainOptions{
 			IgnoreDaemonsets:   k.ignoreDaemonSets,
 			GracePeriodSeconds: -1,
-			Force:              true,
+			Force:              drainForce,
 			DeleteLocalData:    k.deleteLocalData,
 		})
 		if err != nil {
