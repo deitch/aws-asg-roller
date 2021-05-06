@@ -82,19 +82,17 @@ func (k *kubernetesReadiness) prepareTermination(hostnames []string, ids []strin
 	return nil
 }
 
-func kubeGetClientset() (*kubernetes.Clientset, error) {
-	envValue := os.Getenv("ROLLER_KUBERNETES")
+func kubeGetClientset(kubernetesEnabled bool) (*kubernetes.Clientset, error) {
 	// if it is *explicitly* set to false, then do nothing
-	if envValue == "false" {
+	if !kubernetesEnabled {
 		return nil, nil
 	}
-	// if it is not explicitly set to false, then it depends on if we are in a cluster or not
-	useKube := envValue == "true"
+
 	// creates the in-cluster config
 	config, err := rest.InClusterConfig()
 	if err != nil {
 		if err == rest.ErrNotInCluster {
-			if !useKube {
+			if !kubernetesEnabled {
 				return nil, nil
 			}
 			config, err = getKubeOutOfCluster()
@@ -136,8 +134,8 @@ func homeDir() string {
 	return os.Getenv("USERPROFILE") // windows
 }
 
-func kubeGetReadinessHandler(ignoreDaemonSets bool, deleteLocalData bool) (readiness, error) {
-	clientset, err := kubeGetClientset()
+func kubeGetReadinessHandler(kubernetesEnabled, ignoreDaemonSets, deleteLocalData bool) (readiness, error) {
+	clientset, err := kubeGetClientset(kubernetesEnabled)
 	if err != nil {
 		log.Fatalf("Error getting kubernetes connection: %v", err)
 	}
@@ -150,7 +148,7 @@ func kubeGetReadinessHandler(ignoreDaemonSets bool, deleteLocalData bool) (readi
 // setScaleDownDisabledAnnotation set the "cluster-autoscaler.kubernetes.io/scale-down-disabled" annotation
 // on the list of nodes if required. Returns a list of 151 where the annotation
 // is applied.
-func setScaleDownDisabledAnnotation(hostnames []string) ([]string, error) {
+func setScaleDownDisabledAnnotation(kubernetesEnabled bool, hostnames []string) ([]string, error) {
 	// get the node reference - first need the hostname
 	var (
 		node      *corev1.Node
@@ -158,7 +156,7 @@ func setScaleDownDisabledAnnotation(hostnames []string) ([]string, error) {
 		key       = clusterAutoscalerScaleDownDisabledFlag
 		annotated = []string{}
 	)
-	clientset, err := kubeGetClientset()
+	clientset, err := kubeGetClientset(kubernetesEnabled)
 	if err != nil {
 		log.Fatalf("Error getting kubernetes connection: %v", err)
 	}
@@ -184,14 +182,14 @@ func setScaleDownDisabledAnnotation(hostnames []string) ([]string, error) {
 	}
 	return annotated, nil
 }
-func removeScaleDownDisabledAnnotation(hostnames []string) error {
+func removeScaleDownDisabledAnnotation(kubernetesEnabled bool, hostnames []string) error {
 	// get the node reference - first need the hostname
 	var (
 		node *corev1.Node
 		err  error
 		key  = clusterAutoscalerScaleDownDisabledFlag
 	)
-	clientset, err := kubeGetClientset()
+	clientset, err := kubeGetClientset(kubernetesEnabled)
 	if err != nil {
 		log.Fatalf("Error getting kubernetes connection: %v", err)
 	}

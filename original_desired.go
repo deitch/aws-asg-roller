@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"log"
-	"os"
 	"strconv"
 
 	"github.com/aws/aws-sdk-go/aws"
@@ -13,18 +12,14 @@ import (
 
 const asgTagNameOriginalDesired = "aws-asg-roller/OriginalDesired"
 
-var (
-	storeOriginalDesiredOnTag = os.Getenv("ROLLER_ORIGINAL_DESIRED_ON_TAG") == "true"
-)
-
 // Populates the original desired values for each ASG, based on the current 'desired' value if unkonwn.
 // The original desired value is recorded as a tag on the respective ASG. Subsequent runs attempt to
 // read the value of the tag to preserve state in the case of the process terminating.
-func populateOriginalDesired(originalDesired map[string]int64, asgs []*autoscaling.Group, asgSvc autoscalingiface.AutoScalingAPI) error {
+func populateOriginalDesired(originalDesired map[string]int64, asgs []*autoscaling.Group, asgSvc autoscalingiface.AutoScalingAPI, storeOriginalDesiredOnTag bool, verbose bool) error {
 	for _, asg := range asgs {
 		asgName := *asg.AutoScalingGroupName
 		if storeOriginalDesiredOnTag {
-			tagOriginalDesired, err := getOriginalDesiredTag(asgSvc, asgName)
+			tagOriginalDesired, err := getOriginalDesiredTag(asgSvc, asgName, verbose)
 			if err != nil {
 				return err
 			}
@@ -39,7 +34,7 @@ func populateOriginalDesired(originalDesired map[string]int64, asgs []*autoscali
 			log.Printf("guessed desired value of %d from current desired on ASG: %s", *asg.DesiredCapacity, asgName)
 		}
 		if storeOriginalDesiredOnTag {
-			err := setOriginalDesiredTag(asgSvc, asgName, asg)
+			err := setOriginalDesiredTag(asgSvc, asgName, asg, verbose)
 			if err != nil {
 				return err
 			}
@@ -52,7 +47,7 @@ func populateOriginalDesired(originalDesired map[string]int64, asgs []*autoscali
 // returns
 //   the original desired value from the tag, if present, otherwise -1
 //   error
-func getOriginalDesiredTag(asgSvc autoscalingiface.AutoScalingAPI, asgName string) (int64, error) {
+func getOriginalDesiredTag(asgSvc autoscalingiface.AutoScalingAPI, asgName string, verbose bool) (int64, error) {
 	tags, err := asgSvc.DescribeTags(&autoscaling.DescribeTagsInput{
 		Filters: []*autoscaling.Filter{
 			{
@@ -81,7 +76,7 @@ func getOriginalDesiredTag(asgSvc autoscalingiface.AutoScalingAPI, asgName strin
 }
 
 // record original desired value on a tag, in case of process restart
-func setOriginalDesiredTag(asgSvc autoscalingiface.AutoScalingAPI, asgName string, asg *autoscaling.Group) error {
+func setOriginalDesiredTag(asgSvc autoscalingiface.AutoScalingAPI, asgName string, asg *autoscaling.Group, verbose bool) error {
 	_, err := asgSvc.CreateOrUpdateTags(&autoscaling.CreateOrUpdateTagsInput{
 		Tags: []*autoscaling.Tag{
 			{

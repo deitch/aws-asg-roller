@@ -11,6 +11,9 @@ import (
 	"github.com/aws/aws-sdk-go/service/ec2"
 )
 
+// Tests do not talk to a live kubernetes cluster
+const kubernetesEnabled = false
+
 type testReadyHandler struct {
 	unreadyCount   int
 	unreadyError   error
@@ -67,30 +70,31 @@ func TestCalculateAdjustment(t *testing.T) {
 		targetDesired         int64
 		targetTerminate       string
 		err                   error
+		verbose               bool
 	}{
 		// 1 old, 2 new healthy, 0 new unhealthy, should terminate old
-		{[]string{"1"}, []string{"2", "3"}, []string{}, 3, 2, nil, 3, "1", nil},
+		{[]string{"1"}, []string{"2", "3"}, []string{}, 3, 2, nil, 3, "1", nil, false},
 		// 0 old, 2 new healthy, 0 new unhealthy, should indicate end of process
-		{[]string{}, []string{"2", "3"}, []string{}, 2, 2, nil, 2, "", nil},
+		{[]string{}, []string{"2", "3"}, []string{}, 2, 2, nil, 2, "", nil, false},
 		// 2 old, 0 new healthy, 0 new unhealthy, should indicate start of process
-		{[]string{"1", "2"}, []string{}, []string{}, 2, 2, nil, 3, "", nil},
+		{[]string{"1", "2"}, []string{}, []string{}, 2, 2, nil, 3, "", nil, false},
 		// 2 old, 0 new healthy, 0 new unhealthy, started, should not do anything until new healthy one
-		{[]string{"1", "2"}, []string{}, []string{}, 3, 2, nil, 3, "", nil},
+		{[]string{"1", "2"}, []string{}, []string{}, 3, 2, nil, 3, "", nil, false},
 		// 2 old, 1 new healthy, 0 new unhealthy, remove an old one
-		{[]string{"1", "2"}, []string{"3"}, []string{}, 3, 2, nil, 3, "1", nil},
+		{[]string{"1", "2"}, []string{"3"}, []string{}, 3, 2, nil, 3, "1", nil, false},
 		// 2 old, 0 new healthy, 1 new unhealthy, started, should not do anything until new one is healthy
-		{[]string{"1", "2"}, []string{}, []string{"3"}, 3, 2, nil, 3, "", nil},
+		{[]string{"1", "2"}, []string{}, []string{"3"}, 3, 2, nil, 3, "", nil, false},
 
 		// 2 old, 1 new healthy, 0 new unhealthy, 1 new unready, should not change anything
-		{[]string{"1", "2"}, []string{"3"}, []string{}, 3, 2, unreadyCountHandler, 3, "", nil},
+		{[]string{"1", "2"}, []string{"3"}, []string{}, 3, 2, unreadyCountHandler, 3, "", nil, false},
 		// 2 old, 1 new healthy, 0 new unhealthy, 0 new unready, 1 error: should not change anything
-		{[]string{"1", "2"}, []string{"3"}, []string{}, 3, 2, unreadyErrorHandler, 3, "", fmt.Errorf("error")},
+		{[]string{"1", "2"}, []string{"3"}, []string{}, 3, 2, unreadyErrorHandler, 3, "", fmt.Errorf("error"), false},
 		// 2 old, 1 new healthy, 0 new unhealthy, 0 unready, remove an old one
-		{[]string{"1", "2"}, []string{"3"}, []string{}, 3, 2, readyHandler, 3, "1", nil},
+		{[]string{"1", "2"}, []string{"3"}, []string{}, 3, 2, readyHandler, 3, "1", nil, false},
 		// 2 old, 1 new healthy, 0 new unhealthy, 0 new unready, 1 error: should not change anything
-		{[]string{"1", "2"}, []string{"3"}, []string{}, 3, 2, terminateErrorHandler, 3, "", fmt.Errorf("unexpected error")},
+		{[]string{"1", "2"}, []string{"3"}, []string{}, 3, 2, terminateErrorHandler, 3, "", fmt.Errorf("unexpected error"), false},
 		// 2 old, 1 new healthy, 0 new unhealthy, 0 unready, successful terminate: remove an old one
-		{[]string{"1", "2"}, []string{"3"}, []string{}, 3, 2, terminateHandler, 3, "1", nil},
+		{[]string{"1", "2"}, []string{"3"}, []string{}, 3, 2, terminateHandler, 3, "1", nil, false},
 	}
 	hostnameMap := map[string]string{}
 	for i := 0; i < 20; i++ {
@@ -138,7 +142,7 @@ func TestCalculateAdjustment(t *testing.T) {
 		ec2Svc := &mockEc2Svc{
 			autodescribe: true,
 		}
-		desired, terminate, err := calculateAdjustment(asg, ec2Svc, hostnameMap, tt.readiness, tt.originalDesired)
+		desired, terminate, err := calculateAdjustment(kubernetesEnabled, asg, ec2Svc, hostnameMap, tt.readiness, tt.originalDesired, tt.verbose)
 		switch {
 		case (err == nil && tt.err != nil) || (err != nil && tt.err == nil) || (err != nil && tt.err != nil && !strings.HasPrefix(err.Error(), tt.err.Error())):
 			t.Errorf("%d: mismatched errors, actual then expected", i)
@@ -167,6 +171,7 @@ func TestAdjust(t *testing.T) {
 		terminate                   []string
 		canIncreaseMax              bool
 		persistOriginalDesiredOnTag bool
+		verbose                     bool
 	}{
 		{
 			"2 asgs adjust first run",
@@ -186,6 +191,7 @@ func TestAdjust(t *testing.T) {
 			map[string]int64{"myasg": 3},
 			map[string]int64{"myasg": 3, "anotherasg": 4},
 			[]string{},
+			false,
 			false,
 			false,
 		},
@@ -209,6 +215,7 @@ func TestAdjust(t *testing.T) {
 			[]string{},
 			false,
 			false,
+			false,
 		},
 		{
 			"2 asgs adjust in progress with ROLLER_ORIGINAL_DESIRED_ON_TAG set to true",
@@ -230,6 +237,7 @@ func TestAdjust(t *testing.T) {
 			[]string{"1"},
 			false,
 			true,
+			false,
 		},
 		{
 			"2 asgs adjust complete",
@@ -249,6 +257,7 @@ func TestAdjust(t *testing.T) {
 			map[string]int64{},
 			map[string]int64{"myasg": 3},
 			[]string{},
+			false,
 			false,
 			false,
 		},
@@ -272,6 +281,7 @@ func TestAdjust(t *testing.T) {
 			[]string{},
 			false,
 			false,
+			false,
 		},
 		{
 			"2 asgs adjust increase max succeed",
@@ -292,6 +302,7 @@ func TestAdjust(t *testing.T) {
 			map[string]int64{"myasg": 2},
 			[]string{},
 			true,
+			false,
 			false,
 		},
 	}
@@ -331,7 +342,7 @@ func TestAdjust(t *testing.T) {
 					LaunchConfigurationName: &lcName,
 					MaxSize:                 &max,
 				}
-				storeOriginalDesiredOnTag = tt.persistOriginalDesiredOnTag
+
 				if tt.persistOriginalDesiredOnTag {
 					if originalDesired, ok := tt.originalDesired[name]; ok {
 						validGroup.Tags = []*autoscaling.TagDescription{
@@ -364,8 +375,7 @@ func TestAdjust(t *testing.T) {
 				ks := k
 				newDesiredPtr[&ks] = v
 			}
-			canIncreaseMax = tt.canIncreaseMax
-			err := adjust(tt.asgs, ec2Svc, asgSvc, tt.handler, tt.originalDesired)
+			err := adjust(kubernetesEnabled, tt.asgs, ec2Svc, asgSvc, tt.handler, tt.originalDesired, tt.persistOriginalDesiredOnTag, tt.canIncreaseMax, tt.verbose)
 			// what were our last calls to each?
 			switch {
 			case (err == nil && tt.err != nil) || (err != nil && tt.err == nil) || (err != nil && tt.err != nil && !strings.HasPrefix(err.Error(), tt.err.Error())):
@@ -419,7 +429,7 @@ func TestGroupInstances(t *testing.T) {
 		ec2Svc := &mockEc2Svc{
 			autodescribe: true,
 		}
-		oldInstances, newInstances, err := groupInstances(asg, ec2Svc)
+		oldInstances, newInstances, err := groupInstances(asg, ec2Svc, false)
 		if err != nil {
 			t.Errorf("unexpected error grouping instances: %v", err)
 			return

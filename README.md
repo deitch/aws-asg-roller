@@ -226,23 +226,24 @@ Several key areas of potential modification:
 ## Configuration
 ASG Roller takes its configuration via environment variables. All environment variables that affect ASG Roller begin with `ROLLER_`.
 
-* `ROLLER_ASG`: comma-separated list of auto-scaling groups that should be managed.
-* `ROLLER_KUBERNETES`: If set to `true`, will check if a new node is ready via-a-vis Kubernetes before declaring it "ready", and will drain an old node before eliminating it. Defaults to `true` when running in Kubernetes as a pod, `false` otherwise.
-* `ROLLER_IGNORE_DAEMONSETS`: If set to `false`, will not reclaim a node until there are no DaemonSets running on the node; if set to `true` (default), will reclaim node when all regular pods are drained off, but will ignore the presence of DaemonSets, which should be present on every node anyways. Normally, you want this set to `true`, which is the default.
-* `ROLLER_DELETE_LOCAL_DATA`: If set to `false` (default), will not reclaim a node until there are no pods with [emptyDir](https://kubernetes.io/docs/concepts/storage/volumes/#emptydir) running on the node; if set to `true`, will continue to terminate the pod and delete the local data before reclaiming the node. The default is `false` to maintain backward compatibility. 
-* `ROLLER_CHECK_DELAY`: Time, in seconds, between checks of ASG status.
-* `ROLLER_CAN_INCREASE_MAX`: If set to `true`, will increase the ASG maximum size to accommodate the increase in desired count. If set to `false`, will instead error when desired is higher than max.
-* `ROLLER_ORIGINAL_DESIRED_ON_TAG`: If set to `true`, will store the original desired value of the ASG as a tag on the ASG, with the key `aws-asg-roller/OriginalDesired`. This helps maintain state in the situation where the process terminates.
-* `ROLLER_VERBOSE`: If set to `true`, will increase verbosity of logs.
-* `KUBECONFIG`: Path to kubernetes config file for authenticating to the kubernetes cluster. Required only if `ROLLER_KUBERNETES` is `true` and we are not operating in a kubernetes cluster.
+* `ROLLER_ASG` [`string`, required]: comma-separated list of auto-scaling groups that should be managed.
+* `ROLLER_KUBERNETES` [`bool`, default: `true`]: If set to `true`, will check if a new node is ready via-a-vis Kubernetes before declaring it "ready", and will drain an old node before eliminating it. Defaults to `true` when running in Kubernetes as a pod, `false` otherwise.
+* `ROLLER_IGNORE_DAEMONSETS` [`bool`, default: `true`]: If set to `false`, will not reclaim a node until there are no DaemonSets running on the node; if set to `true` (default), will reclaim node when all regular pods are drained off, but will ignore the presence of DaemonSets, which should be present on every node anyways. Normally, you want this set to `true`.
+* `ROLLER_DELETE_LOCAL_DATA` [`bool`, default: `false`]: If set to `false` (default), will not reclaim a node until there are no pods with [emptyDir](https://kubernetes.io/docs/concepts/storage/volumes/#emptydir) running on the node; if set to `true`, will continue to terminate the pod and delete the local data before reclaiming the node. The default is `false` to maintain backward compatibility.
+* `ROLLER_INTERVAL` [`time.Duration`, default: `30s`]: Time between roller runs. Takes time duration such as 10s, 10m, 10d
+* `ROLLER_CHECK_DELAY` [`int`]: Time, in seconds, between checks of ASG status. deprecated, use `ROLLER_INTERVAL`.
+* `ROLLER_CAN_INCREASE_MAX` `bool`: If set to `true`, will increase the ASG maximum size to accommodate the increase in desired count. If set to `false`, will instead error when desired is higher than max.
+* `ROLLER_ORIGINAL_DESIRED_ON_TAG` [`bool`, default: `false`]: If set to `true`, will store the original desired value of the ASG as a tag on the ASG, with the key `aws-asg-roller/OriginalDesired`. This helps maintain state in the situation where the process terminates.
+* `ROLLER_VERBOSE` [`bool`, default: `false`]: If set to `true`, will increase verbosity of logs.
+* `KUBECONFIG` [`string`]: Path to kubernetes config file for authenticating to the kubernetes cluster. Required only if `ROLLER_KUBERNETES` is `true` and we are not operating in a kubernetes cluster.
 
 ## Interaction with cluster-autoscaler
 
-[cluster-autoscaler](https://github.com/kubernetes/autoscaler/tree/master/cluster-autoscaler) is a tool that commonly used to automatically adjusts the size of the Kubernetes cluster. However, there might be some conflicts (see [#19](https://github.com/deitch/aws-asg-roller/issues/19) for more details) between cluster-autoscaler and aws-asg-roller when they are both trying to schedule the asg. A workaround was implemented in aws-asg-roller by annotating all the managed nodes with `cluster-autoscaler.kubernetes.io/scale-down-disabled` when rolling-update is required. 
+[cluster-autoscaler](https://github.com/kubernetes/autoscaler/tree/master/cluster-autoscaler) is a tool that commonly used to automatically adjusts the size of the Kubernetes cluster. However, there might be some conflicts (see [#19](https://github.com/deitch/aws-asg-roller/issues/19) for more details) between cluster-autoscaler and aws-asg-roller when they are both trying to schedule the asg. A workaround was implemented in aws-asg-roller by annotating all the managed nodes with `cluster-autoscaler.kubernetes.io/scale-down-disabled` when rolling-update is required.
 
 The general flow can be summarized as follow:
 * Check if any nodes in the asg needs to be updated.
-* If there are nodes that needs to be updated, annotate all up-to-date or new nodes with `cluster-autoscaler.kubernetes.io/scale-down-disabled` 
+* If there are nodes that needs to be updated, annotate all up-to-date or new nodes with `cluster-autoscaler.kubernetes.io/scale-down-disabled`
   * Update asg to spin up a new node before draining any old nodes.
   * Sleep and repeat (i.e. annotate new unutilized node to prevent it from being scaled-down).
 * If all nodes are up-to-date, remove `cluster-autoscaler.kubernetes.io/scale-down-disabled` if any from all the nodes - i.e. normal cluster-autoscaler management resumes.

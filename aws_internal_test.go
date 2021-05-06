@@ -309,24 +309,24 @@ func TestAwsSetAsgDesired(t *testing.T) {
 		canIncreaseMax bool
 		setErr         error
 		err            error
+		verbose        bool
 	}{
-		{3, 3, true, nil, nil},
-		{2, 2, true, nil, nil},
-		{15, 15, true, awserr.New(autoscaling.ErrCodeResourceContentionFault, "", nil), fmt.Errorf("unable to increase ASG mygroup desired count to 15 - ResourceContention")},
-		{1, 1, true, awserr.New("testabc", "", nil), fmt.Errorf("unable to increase ASG mygroup desired count to 1 - unexpected and unknown AWS error")},
-		{25, 25, true, fmt.Errorf("testabc"), fmt.Errorf("unable to increase ASG mygroup desired count to 25 - unexpected and unknown non-AWS error")},
-		{31, 30, false, nil, fmt.Errorf("unable to increase ASG mygroup desired size to 31 as greater than max size 30")},
-		{31, 30, true, nil, nil},
+		{3, 3, true, nil, nil, false},
+		{2, 2, true, nil, nil, false},
+		{15, 15, true, awserr.New(autoscaling.ErrCodeResourceContentionFault, "", nil), fmt.Errorf("unable to increase ASG mygroup desired count to 15 - ResourceContention"), false},
+		{1, 1, true, awserr.New("testabc", "", nil), fmt.Errorf("unable to increase ASG mygroup desired count to 1 - unexpected and unknown AWS error"), false},
+		{25, 25, true, fmt.Errorf("testabc"), fmt.Errorf("unable to increase ASG mygroup desired count to 25 - unexpected and unknown non-AWS error"), false},
+		{31, 30, false, nil, fmt.Errorf("unable to increase ASG mygroup desired size to 31 as greater than max size 30"), false},
+		{31, 30, true, nil, nil, false},
 	}
 	for i, tt := range tests {
 		asg := &autoscaling.Group{
 			AutoScalingGroupName: &groupName,
 			MaxSize:              &tt.max,
 		}
-		canIncreaseMax = tt.canIncreaseMax
 		err := setAsgDesired(&mockAsgSvc{
 			err: tt.setErr,
-		}, asg, tt.desired)
+		}, asg, tt.desired, tt.canIncreaseMax, tt.verbose)
 		switch {
 		case (err == nil && tt.err != nil) || (err != nil && tt.err == nil) || (err != nil && tt.err != nil && !strings.HasPrefix(err.Error(), tt.err.Error())):
 			t.Errorf("%d: Mismatched error, actual then expected", i)
@@ -339,15 +339,16 @@ func TestAwsSetAsgDesired(t *testing.T) {
 func TestAwsSetAsgMax(t *testing.T) {
 	groupName := "mygroup"
 	tests := []struct {
-		max    int64
-		setErr error
-		err    error
+		max     int64
+		setErr  error
+		err     error
+		verbose bool
 	}{
-		{3, nil, nil},
-		{2, nil, nil},
-		{15, awserr.New(autoscaling.ErrCodeResourceContentionFault, "", nil), fmt.Errorf("unable to increase ASG mygroup max size to 15 - ResourceContention")},
-		{1, awserr.New("testabc", "", nil), fmt.Errorf("unable to increase ASG mygroup max size to 1 - unexpected and unknown AWS error: testabc")},
-		{25, fmt.Errorf("testabc"), fmt.Errorf("unable to increase ASG mygroup max size to 25 - unexpected and unknown non-AWS error: testabc")},
+		{3, nil, nil, false},
+		{2, nil, nil, false},
+		{15, awserr.New(autoscaling.ErrCodeResourceContentionFault, "", nil), fmt.Errorf("unable to increase ASG mygroup max size to 15 - ResourceContention"), false},
+		{1, awserr.New("testabc", "", nil), fmt.Errorf("unable to increase ASG mygroup max size to 1 - unexpected and unknown AWS error: testabc"), false},
+		{25, fmt.Errorf("testabc"), fmt.Errorf("unable to increase ASG mygroup max size to 25 - unexpected and unknown non-AWS error: testabc"), false},
 	}
 	for i, tt := range tests {
 		asg := &autoscaling.Group{
@@ -355,7 +356,7 @@ func TestAwsSetAsgMax(t *testing.T) {
 		}
 		err := setAsgMax(&mockAsgSvc{
 			err: tt.setErr,
-		}, asg, tt.max)
+		}, asg, tt.max, tt.verbose)
 		switch {
 		case (err == nil && tt.err != nil) || (err != nil && tt.err == nil) || (err != nil && tt.err != nil && !strings.HasPrefix(err.Error(), tt.err.Error())):
 			t.Errorf("%d: Mismatched error, actual then expected", i)

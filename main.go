@@ -1,34 +1,19 @@
 package main
 
 import (
-	"fmt"
 	"log"
 	"os"
-	"strconv"
 	"strings"
 	"time"
-)
 
-const (
-	asgCheckDelay = 30 // Default delay between checks of ASG status in seconds
-)
-
-var (
-	verbose        = os.Getenv("ROLLER_VERBOSE") == "true"
-	canIncreaseMax = os.Getenv("ROLLER_CAN_INCREASE_MAX") == "true"
+	env "github.com/caarlos0/env/v6"
 )
 
 func main() {
-	asgList := strings.Split(os.Getenv("ROLLER_ASG"), ",")
-	if len(asgList) == 0 {
-		log.Fatal("Must supply at least one ASG in ROLLER_ASG environment variable")
-	}
+	configs := getConfigs()
 
-	// get config env
-	ignoreDaemonSets := os.Getenv("ROLLER_IGNORE_DAEMONSETS") != "false"
-	deleteLocalData := strings.ToLower(os.Getenv("ROLLER_DELETE_LOCAL_DATA")) == "true"
 	// get a kube connection
-	readinessHandler, err := kubeGetReadinessHandler(ignoreDaemonSets, deleteLocalData)
+	readinessHandler, err := kubeGetReadinessHandler(configs.KubernetesEnabled, configs.IgnoreDaemonSets, configs.DeleteLocalData)
 	if err != nil {
 		log.Fatalf("Error getting kubernetes readiness handler when required: %v", err)
 	}
@@ -42,33 +27,31 @@ func main() {
 	// to keep track of original target sizes during rolling updates
 	originalDesired := map[string]int64{}
 
-	checkDelay, err := getDelay()
-	if err != nil {
-		log.Fatalf("Unable to get delay: %s", err.Error())
-	}
-
 	// infinite loop
 	for {
-		err := adjust(asgList, ec2Svc, asgSvc, readinessHandler, originalDesired)
+		err := adjust(configs.KubernetesEnabled, configs.ASGS, ec2Svc, asgSvc, readinessHandler, originalDesired, configs.OriginalDesiredOnTag, configs.IncreaseMax, configs.Verbose)
 		if err != nil {
 			log.Printf("Error adjusting AutoScaling Groups: %v", err)
 		}
 		// delay with each loop
-		log.Printf("Sleeping %d seconds\n", checkDelay)
-		time.Sleep(time.Duration(checkDelay) * time.Second)
+		log.Printf("Sleeping %d seconds\n", configs.Interval)
+		time.Sleep(configs.Interval)
 	}
 }
 
-// Returns delay value to use in loop. Uses default if not defined.
-func getDelay() (int, error) {
-	delayOverride, exist := os.LookupEnv("ROLLER_CHECK_DELAY")
-	if exist {
-		delay, err := strconv.Atoi(delayOverride)
-		if err != nil {
-			return -1, fmt.Errorf("ROLLER_CHECK_DELAY is not parsable: %v (%s)", delayOverride, err.Error())
+func getConfigs() (configs Configs) {
+	// Compat helper
+	val, ok := os.LookupEnv("ROLLER_CHECK_DELAY")
+	if ok {
+		// Use value from check delay to set an interval
+		if !strings.HasSuffix(val, "s") {
+			os.Setenv("ROLLER_INTERVAL", val+"s")
 		}
-		return delay, nil
 	}
 
-	return asgCheckDelay, nil
+	if err := env.Parse(&configs); err != nil {
+		log.Panicf("unexpected error while initializing the config: %v", err)
+	}
+
+	return configs
 }

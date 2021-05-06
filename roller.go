@@ -16,7 +16,7 @@ const (
 )
 
 // adjust runs a single adjustment in the loop to update an ASG in a rolling fashion to latest launch config
-func adjust(asgList []string, ec2Svc ec2iface.EC2API, asgSvc autoscalingiface.AutoScalingAPI, readinessHandler readiness, originalDesired map[string]int64) error {
+func adjust(kubernetesEnabled bool, asgList []string, ec2Svc ec2iface.EC2API, asgSvc autoscalingiface.AutoScalingAPI, readinessHandler readiness, originalDesired map[string]int64, storeOriginalDesiredOnTag, canIncreaseMax, verbose bool) error {
 	// get information on all of the groups
 	asgs, err := awsDescribeGroups(asgSvc, asgList)
 	if err != nil {
@@ -24,7 +24,7 @@ func adjust(asgList []string, ec2Svc ec2iface.EC2API, asgSvc autoscalingiface.Au
 	}
 
 	// look up and record original desired values
-	err = populateOriginalDesired(originalDesired, asgs, asgSvc)
+	err = populateOriginalDesired(originalDesired, asgs, asgSvc, storeOriginalDesiredOnTag, verbose)
 	if err != nil {
 		return fmt.Errorf("unexpected error looking up original desired values for ASGs, skipping: %v", err)
 	}
@@ -33,14 +33,14 @@ func adjust(asgList []string, ec2Svc ec2iface.EC2API, asgSvc autoscalingiface.Au
 	// get information on all of the ec2 instances
 	instances := make([]*autoscaling.Instance, 0)
 	for _, asg := range asgs {
-		oldInstances, newInstances, err := groupInstances(asg, ec2Svc)
+		oldInstances, newInstances, err := groupInstances(asg, ec2Svc, verbose)
 		if err != nil {
 			return fmt.Errorf("unable to group instances into new and old: %v", err)
 		}
 		// if there are no outdated instances skip updating
 		if len(oldInstances) == 0 && *asg.DesiredCapacity == originalDesired[*asg.AutoScalingGroupName] {
 			log.Printf("[%s] ok\n", *asg.AutoScalingGroupName)
-			err := ensureNoScaleDownDisabledAnnotation(ec2Svc, mapInstancesIds(asg.Instances))
+			err := ensureNoScaleDownDisabledAnnotation(kubernetesEnabled, ec2Svc, mapInstancesIds(asg.Instances))
 			if err != nil {
 				log.Printf("[%s] Unable to update node annotations: %v\n", *asg.AutoScalingGroupName, err)
 			}
@@ -71,7 +71,7 @@ func adjust(asgList []string, ec2Svc ec2iface.EC2API, asgSvc autoscalingiface.Au
 
 	// keep keyed references to the ASGs
 	for _, asg := range asgMap {
-		newDesiredA, terminateID, err := calculateAdjustment(asg, ec2Svc, hostnameMap, readinessHandler, originalDesired[*asg.AutoScalingGroupName])
+		newDesiredA, terminateID, err := calculateAdjustment(kubernetesEnabled, asg, ec2Svc, hostnameMap, readinessHandler, originalDesired[*asg.AutoScalingGroupName], verbose)
 		log.Printf("[%v] desired: %d original: %d", p2v(asg.AutoScalingGroupName), newDesiredA, originalDesired[*asg.AutoScalingGroupName])
 		if err != nil {
 			log.Printf("[%v] error calculating adjustment - skipping: %v\n", p2v(asg.AutoScalingGroupName), err)
@@ -88,7 +88,7 @@ func adjust(asgList []string, ec2Svc ec2iface.EC2API, asgSvc autoscalingiface.Au
 	// adjust current desired
 	for asg, desired := range newDesired {
 		log.Printf("[%s] set desired instances: %d\n", asg, desired)
-		err = setAsgDesired(asgSvc, asgMap[asg], desired)
+		err = setAsgDesired(asgSvc, asgMap[asg], desired, canIncreaseMax, verbose)
 		if err != nil {
 			return fmt.Errorf("[%s] error setting desired to %d: %v", asg, desired, err)
 		}
@@ -107,12 +107,12 @@ func adjust(asgList []string, ec2Svc ec2iface.EC2API, asgSvc autoscalingiface.Au
 
 // ensureNoScaleDownDisabledAnnotation remove any "cluster-autoscaler.kubernetes.io/scale-down-disabled"
 // annotations in the nodes as no update is required anymore.
-func ensureNoScaleDownDisabledAnnotation(ec2Svc ec2iface.EC2API, ids []string) error {
+func ensureNoScaleDownDisabledAnnotation(kubernetesEnabled bool, ec2Svc ec2iface.EC2API, ids []string) error {
 	hostnames, err := awsGetHostnames(ec2Svc, ids)
 	if err != nil {
 		return fmt.Errorf("unable to get aws hostnames for ids %v: %v", ids, err)
 	}
-	return removeScaleDownDisabledAnnotation(hostnames)
+	return removeScaleDownDisabledAnnotation(kubernetesEnabled, hostnames)
 }
 
 // calculateAdjustment calculates the new settings for the desired number, and which node (if any) to terminate
@@ -121,11 +121,11 @@ func ensureNoScaleDownDisabledAnnotation(ec2Svc ec2iface.EC2API, ids []string) e
 //   what the new desired number of instances should be
 //   ID of an instance to terminate, "" if none
 //   error
-func calculateAdjustment(asg *autoscaling.Group, ec2Svc ec2iface.EC2API, hostnameMap map[string]string, readinessHandler readiness, originalDesired int64) (int64, string, error) {
+func calculateAdjustment(kubernetesEnabled bool, asg *autoscaling.Group, ec2Svc ec2iface.EC2API, hostnameMap map[string]string, readinessHandler readiness, originalDesired int64, verbose bool) (int64, string, error) {
 	desired := *asg.DesiredCapacity
 
 	// get instances with old launch config
-	oldInstances, newInstances, err := groupInstances(asg, ec2Svc)
+	oldInstances, newInstances, err := groupInstances(asg, ec2Svc, verbose)
 	if err != nil {
 		return originalDesired, "", fmt.Errorf("unable to group instances into new and old: %v", err)
 	}
@@ -187,7 +187,7 @@ func calculateAdjustment(asg *autoscaling.Group, ec2Svc ec2iface.EC2API, hostnam
 		for _, i := range ids {
 			hostnames = append(hostnames, hostnameMap[i])
 		}
-		_, err = setScaleDownDisabledAnnotation(hostnames)
+		_, err = setScaleDownDisabledAnnotation(kubernetesEnabled, hostnames)
 		if err != nil {
 			log.Printf("Unable to set disabled scale down annotations: %v", err)
 		}
@@ -222,7 +222,7 @@ func calculateAdjustment(asg *autoscaling.Group, ec2Svc ec2iface.EC2API, hostnam
 // groupInstances handles all of the logic for determining which nodes in the ASG have an old or outdated
 // config, and which are up to date. It should do nothing else.
 // The entire rest of the code should rely on this for making the determination
-func groupInstances(asg *autoscaling.Group, ec2Svc ec2iface.EC2API) ([]*autoscaling.Instance, []*autoscaling.Instance, error) {
+func groupInstances(asg *autoscaling.Group, ec2Svc ec2iface.EC2API, verbose bool) ([]*autoscaling.Instance, []*autoscaling.Instance, error) {
 	oldInstances := make([]*autoscaling.Instance, 0)
 	newInstances := make([]*autoscaling.Instance, 0)
 	// we want to be able to handle LaunchTemplate as well

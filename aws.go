@@ -12,10 +12,10 @@ import (
 	"log"
 )
 
-func setAsgDesired(svc autoscalingiface.AutoScalingAPI, asg *autoscaling.Group, count int64) error {
+func setAsgDesired(svc autoscalingiface.AutoScalingAPI, asg *autoscaling.Group, count int64, canIncreaseMax, verbose bool) error {
 	if count > *asg.MaxSize {
 		if canIncreaseMax {
-			err := setAsgMax(svc, asg, count)
+			err := setAsgMax(svc, asg, count, verbose)
 			if err != nil {
 				return err
 			}
@@ -43,9 +43,9 @@ func setAsgDesired(svc autoscalingiface.AutoScalingAPI, asg *autoscaling.Group, 
 			default:
 				return fmt.Errorf("%s - unexpected and unknown AWS error: %v", errMsg, aerr.Error())
 			}
-		} else {
-			return fmt.Errorf("%s - unexpected and unknown non-AWS error: %v", errMsg, err.Error())
 		}
+
+		return fmt.Errorf("%s - unexpected and unknown non-AWS error: %v", errMsg, err.Error())
 	}
 	if verbose {
 		log.Printf("increased ASG %s desired count to %d", *asg.AutoScalingGroupName, count)
@@ -53,7 +53,7 @@ func setAsgDesired(svc autoscalingiface.AutoScalingAPI, asg *autoscaling.Group, 
 	return nil
 }
 
-func setAsgMax(svc autoscalingiface.AutoScalingAPI, asg *autoscaling.Group, count int64) error {
+func setAsgMax(svc autoscalingiface.AutoScalingAPI, asg *autoscaling.Group, count int64, verbose bool) error {
 	if verbose {
 		log.Printf("increasing ASG %s max size to %d to accommodate desired count", *asg.AutoScalingGroupName, count)
 	}
@@ -72,9 +72,9 @@ func setAsgMax(svc autoscalingiface.AutoScalingAPI, asg *autoscaling.Group, coun
 			default:
 				return fmt.Errorf("%s - unexpected and unknown AWS error: %v", errMsg, aerr.Error())
 			}
-		} else {
-			return fmt.Errorf("%s - unexpected and unknown non-AWS error: %v", errMsg, err.Error())
 		}
+
+		return fmt.Errorf("%s - unexpected and unknown non-AWS error: %v", errMsg, err.Error())
 	}
 	if verbose {
 		log.Printf("increased ASG %s max size to %d to accommodate desired count", *asg.AutoScalingGroupName, count)
