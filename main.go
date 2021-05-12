@@ -38,7 +38,7 @@ func main() {
 			log.Printf("Error adjusting AutoScaling Groups: %v", err)
 		}
 		// delay with each loop
-		log.Printf("Sleeping %d seconds\n", configs.Interval)
+		log.Printf("Sleeping %v\n", configs.Interval)
 		time.Sleep(configs.Interval)
 	}
 }
