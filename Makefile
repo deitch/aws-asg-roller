@@ -42,9 +42,9 @@ BUILDERTAG = $(IMGTAG)-builder
 BINDIR ?= bin
 BINARY ?= $(BINDIR)/aws-asg-roller-$(OS)-$(ARCH)
 
-GOVER ?= 1.15.6-alpine3.12
+GOVER ?= 1.16.5-alpine3.13
 
-GO ?= GOOS=$(OS) GOARCH=$(ARCH) GO111MODULE=on CGO_ENABLED=0
+GO ?= GOOS=$(OS) GOARCH=$(ARCH)
 
 ifneq ($(BUILD),local)
 GO = docker run --rm $(BUILDERTAG)
@@ -116,9 +116,7 @@ endif
 golint:
 ifeq ($(BUILD),local)
 ifeq (, $(shell which golint))
-	# the stupid things we need to do because "go get" tries to modify go.mod/go.sum since go1.11 modules...
-	#  see https://github.com/golang/go/issues/27643 and related
-	$(GO) GO111MODULE=off go get -u golang.org/x/lint/golint
+	$(GO) go get -u golang.org/x/lint/golint
 	# just check the status; this will go away
 	git status
 endif
