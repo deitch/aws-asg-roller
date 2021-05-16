@@ -4,7 +4,7 @@ go 1.12
 
 require (
 	github.com/aws/aws-sdk-go v1.21.8
-	github.com/caarlos0/env/v6 v6.5.0
+	github.com/caarlos0/env/v6 v6.6.0
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/go-log/log v0.2.0 // indirect
 	github.com/gogo/protobuf v0.0.0-20170330071051-c0656edd0d9e // indirect
