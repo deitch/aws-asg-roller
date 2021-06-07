@@ -6,7 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
-	drain "github.com/openshift/kubernetes-drain"
+	drainer "github.com/openshift/kubernetes-drain"
 	corev1 "k8s.io/api/core/v1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
@@ -57,22 +57,28 @@ func (k *kubernetesReadiness) getUnreadyCount(hostnames []string, ids []string) 
 	}
 	return unReadyCount, nil
 }
-func (k *kubernetesReadiness) prepareTermination(hostnames []string, ids []string) error {
+func (k *kubernetesReadiness) prepareTermination(hostnames []string, ids []string, drain, drainForce bool) error {
 	// get the node reference - first need the hostname
 	var (
 		node *corev1.Node
 		err  error
 	)
+
+	// Skip drain
+	if !drain {
+		return nil
+	}
+
 	for _, h := range hostnames {
 		node, err = k.clientset.CoreV1().Nodes().Get(h, v1.GetOptions{})
 		if err != nil {
 			return fmt.Errorf("Unexpected error getting kubernetes node %s: %v", h, err)
 		}
 		// set options and drain nodes
-		err = drain.Drain(k.clientset, []*corev1.Node{node}, &drain.DrainOptions{
+		err = drainer.Drain(k.clientset, []*corev1.Node{node}, &drainer.DrainOptions{
 			IgnoreDaemonsets:   k.ignoreDaemonSets,
 			GracePeriodSeconds: -1,
-			Force:              true,
+			Force:              drainForce,
 			DeleteLocalData:    k.deleteLocalData,
 		})
 		if err != nil {
@@ -82,19 +88,17 @@ func (k *kubernetesReadiness) prepareTermination(hostnames []string, ids []strin
 	return nil
 }
 
-func kubeGetClientset() (*kubernetes.Clientset, error) {
-	envValue := os.Getenv("ROLLER_KUBERNETES")
+func kubeGetClientset(kubernetesEnabled bool) (*kubernetes.Clientset, error) {
 	// if it is *explicitly* set to false, then do nothing
-	if envValue == "false" {
+	if !kubernetesEnabled {
 		return nil, nil
 	}
-	// if it is not explicitly set to false, then it depends on if we are in a cluster or not
-	useKube := envValue == "true"
+
 	// creates the in-cluster config
 	config, err := rest.InClusterConfig()
 	if err != nil {
 		if err == rest.ErrNotInCluster {
-			if !useKube {
+			if !kubernetesEnabled {
 				return nil, nil
 			}
 			config, err = getKubeOutOfCluster()
@@ -136,8 +140,8 @@ func homeDir() string {
 	return os.Getenv("USERPROFILE") // windows
 }
 
-func kubeGetReadinessHandler(ignoreDaemonSets bool, deleteLocalData bool) (readiness, error) {
-	clientset, err := kubeGetClientset()
+func kubeGetReadinessHandler(kubernetesEnabled, ignoreDaemonSets, deleteLocalData bool) (readiness, error) {
+	clientset, err := kubeGetClientset(kubernetesEnabled)
 	if err != nil {
 		log.Fatalf("Error getting kubernetes connection: %v", err)
 	}
@@ -150,7 +154,7 @@ func kubeGetReadinessHandler(ignoreDaemonSets bool, deleteLocalData bool) (readi
 // setScaleDownDisabledAnnotation set the "cluster-autoscaler.kubernetes.io/scale-down-disabled" annotation
 // on the list of nodes if required. Returns a list of 151 where the annotation
 // is applied.
-func setScaleDownDisabledAnnotation(hostnames []string) ([]string, error) {
+func setScaleDownDisabledAnnotation(kubernetesEnabled bool, hostnames []string) ([]string, error) {
 	// get the node reference - first need the hostname
 	var (
 		node      *corev1.Node
@@ -158,7 +162,7 @@ func setScaleDownDisabledAnnotation(hostnames []string) ([]string, error) {
 		key       = clusterAutoscalerScaleDownDisabledFlag
 		annotated = []string{}
 	)
-	clientset, err := kubeGetClientset()
+	clientset, err := kubeGetClientset(kubernetesEnabled)
 	if err != nil {
 		log.Fatalf("Error getting kubernetes connection: %v", err)
 	}
@@ -184,14 +188,14 @@ func setScaleDownDisabledAnnotation(hostnames []string) ([]string, error) {
 	}
 	return annotated, nil
 }
-func removeScaleDownDisabledAnnotation(hostnames []string) error {
+func removeScaleDownDisabledAnnotation(kubernetesEnabled bool, hostnames []string) error {
 	// get the node reference - first need the hostname
 	var (
 		node *corev1.Node
 		err  error
 		key  = clusterAutoscalerScaleDownDisabledFlag
 	)
-	clientset, err := kubeGetClientset()
+	clientset, err := kubeGetClientset(kubernetesEnabled)
 	if err != nil {
 		log.Fatalf("Error getting kubernetes connection: %v", err)
 	}
