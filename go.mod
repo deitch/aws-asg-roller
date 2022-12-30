@@ -3,7 +3,7 @@ module github.com/deitch/aws-asg-roller
 go 1.12
 
 require (
-	github.com/aws/aws-sdk-go v1.21.8
+	github.com/aws/aws-sdk-go v1.33.0
 	github.com/caarlos0/env/v6 v6.6.0
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/go-log/log v0.2.0 // indirect
